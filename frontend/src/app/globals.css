@@ -1,0 +1,13 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root { color-scheme: light; --font-display: "Segoe UI", Inter, system-ui, sans-serif; }
+body { @apply bg-canvas text-ink antialiased; font-family: Inter, "Segoe UI", system-ui, sans-serif; }
+button, input, select, textarea { @apply outline-none; }
+.card { @apply rounded-2xl border border-black/5 bg-white shadow-soft; }
+.button { @apply inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-leaf-600 px-4 py-2 font-semibold text-white transition hover:bg-leaf-700 disabled:cursor-not-allowed disabled:opacity-50; }
+.button-secondary { @apply button bg-white text-ink ring-1 ring-black/10 hover:bg-black/5; }
+.input { @apply min-h-11 w-full rounded-xl border border-black/10 bg-white px-3 py-2 transition focus:border-leaf-500 focus:ring-2 focus:ring-leaf-500/20; }
+.label { @apply mb-1.5 block text-sm font-semibold; }
+.badge { @apply inline-flex rounded-full bg-black/5 px-2.5 py-1 text-xs font-semibold uppercase tracking-wide; }
