@@ -79,7 +79,9 @@ class IdMixin:
 
 class TimestampMixin:
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=utcnow, onupdate=utcnow, nullable=False
+    )
 
 
 class AdminUser(IdMixin, TimestampMixin, Base):
@@ -91,7 +93,9 @@ class AdminUser(IdMixin, TimestampMixin, Base):
 
 class AdminSession(IdMixin, Base):
     __tablename__ = "admin_sessions"
-    admin_id: Mapped[int] = mapped_column(ForeignKey("admin_users.id", ondelete="CASCADE"), index=True)
+    admin_id: Mapped[int] = mapped_column(
+        ForeignKey("admin_users.id", ondelete="CASCADE"), index=True
+    )
     token_hash: Mapped[str] = mapped_column(String(64), unique=True)
     csrf_hash: Mapped[str] = mapped_column(String(64))
     expires_at: Mapped[datetime] = mapped_column(DateTime, index=True)
@@ -104,7 +108,9 @@ class Event(IdMixin, TimestampMixin, Base):
     __tablename__ = "events"
     code: Mapped[str] = mapped_column(String(50), unique=True, index=True)
     name: Mapped[str] = mapped_column(String(255))
-    status: Mapped[EventStatus] = mapped_column(Enum(EventStatus, native_enum=False), default=EventStatus.draft)
+    status: Mapped[EventStatus] = mapped_column(
+        Enum(EventStatus, native_enum=False), default=EventStatus.draft
+    )
     mode: Mapped[EventMode] = mapped_column(Enum(EventMode, native_enum=False))
     currency: Mapped[str] = mapped_column(String(3), default="EUR")
     default_balance_minor: Mapped[int] = mapped_column(BigInteger, default=5000)
@@ -128,7 +134,9 @@ class Participant(IdMixin, TimestampMixin, Base):
 class Wallet(IdMixin, TimestampMixin, Base):
     __tablename__ = "wallets"
     event_id: Mapped[int] = mapped_column(ForeignKey("events.id", ondelete="CASCADE"), index=True)
-    participant_id: Mapped[int] = mapped_column(ForeignKey("participants.id", ondelete="CASCADE"), unique=True)
+    participant_id: Mapped[int] = mapped_column(
+        ForeignKey("participants.id", ondelete="CASCADE"), unique=True
+    )
     balance_minor: Mapped[int] = mapped_column(BigInteger, default=0)
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     participant: Mapped[Participant] = relationship(back_populates="wallet")
@@ -140,6 +148,7 @@ class WalletAccessToken(IdMixin, Base):
     wallet_id: Mapped[int] = mapped_column(ForeignKey("wallets.id", ondelete="CASCADE"), index=True)
     token_hash: Mapped[str] = mapped_column(String(64), unique=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime, index=True)
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime)
 
 
@@ -189,12 +198,18 @@ class MoneyTransaction(IdMixin, TimestampMixin, Base):
         Index("ix_money_wallet_status_created", "wallet_id", "status", "created_at"),
     )
     event_id: Mapped[int] = mapped_column(ForeignKey("events.id", ondelete="RESTRICT"), index=True)
-    wallet_id: Mapped[int] = mapped_column(ForeignKey("wallets.id", ondelete="RESTRICT"), index=True)
-    vendor_id: Mapped[int | None] = mapped_column(ForeignKey("vendors.id", ondelete="SET NULL"), index=True)
+    wallet_id: Mapped[int] = mapped_column(
+        ForeignKey("wallets.id", ondelete="RESTRICT"), index=True
+    )
+    vendor_id: Mapped[int | None] = mapped_column(
+        ForeignKey("vendors.id", ondelete="SET NULL"), index=True
+    )
     reference: Mapped[str] = mapped_column(String(40), unique=True)
     request_key: Mapped[str | None] = mapped_column(String(64))
     type: Mapped[TransactionType] = mapped_column(Enum(TransactionType, native_enum=False))
-    status: Mapped[TransactionStatus] = mapped_column(Enum(TransactionStatus, native_enum=False), index=True)
+    status: Mapped[TransactionStatus] = mapped_column(
+        Enum(TransactionStatus, native_enum=False), index=True
+    )
     amount_minor: Mapped[int] = mapped_column(BigInteger)
     participant_code: Mapped[str] = mapped_column(String(100))
     participant_name: Mapped[str] = mapped_column(String(255))
@@ -204,14 +219,18 @@ class MoneyTransaction(IdMixin, TimestampMixin, Base):
     decided_by: Mapped[str | None] = mapped_column(String(255))
     decision_at: Mapped[datetime | None] = mapped_column(DateTime)
     expires_at: Mapped[datetime | None] = mapped_column(DateTime, index=True)
-    reversal_of_id: Mapped[int | None] = mapped_column(ForeignKey("money_transactions.id"), unique=True)
+    reversal_of_id: Mapped[int | None] = mapped_column(
+        ForeignKey("money_transactions.id"), unique=True
+    )
     note: Mapped[str | None] = mapped_column(String(500))
 
 
 class CouponTemplate(IdMixin, TimestampMixin, Base):
     __tablename__ = "coupon_templates"
     event_id: Mapped[int] = mapped_column(ForeignKey("events.id", ondelete="CASCADE"), index=True)
-    vendor_id: Mapped[int | None] = mapped_column(ForeignKey("vendors.id", ondelete="SET NULL"), index=True)
+    vendor_id: Mapped[int | None] = mapped_column(
+        ForeignKey("vendors.id", ondelete="SET NULL"), index=True
+    )
     name: Mapped[str] = mapped_column(String(255))
     sort_order: Mapped[int] = mapped_column(Integer, default=0)
     active: Mapped[bool] = mapped_column(Boolean, default=True)
@@ -221,12 +240,18 @@ class CouponInstance(IdMixin, TimestampMixin, Base):
     __tablename__ = "coupon_instances"
     __table_args__ = (Index("ix_coupon_event_wallet_status", "event_id", "wallet_id", "status"),)
     event_id: Mapped[int] = mapped_column(ForeignKey("events.id", ondelete="RESTRICT"), index=True)
-    template_id: Mapped[int] = mapped_column(ForeignKey("coupon_templates.id", ondelete="RESTRICT"), index=True)
-    wallet_id: Mapped[int] = mapped_column(ForeignKey("wallets.id", ondelete="RESTRICT"), index=True)
+    template_id: Mapped[int] = mapped_column(
+        ForeignKey("coupon_templates.id", ondelete="RESTRICT"), index=True
+    )
+    wallet_id: Mapped[int] = mapped_column(
+        ForeignKey("wallets.id", ondelete="RESTRICT"), index=True
+    )
     token_hash: Mapped[str] = mapped_column(String(64), unique=True)
     status: Mapped[CouponStatus] = mapped_column(Enum(CouponStatus, native_enum=False), index=True)
     redeemed_at: Mapped[datetime | None] = mapped_column(DateTime)
-    redeemed_by_vendor_id: Mapped[int | None] = mapped_column(ForeignKey("vendors.id", ondelete="SET NULL"))
+    redeemed_by_vendor_id: Mapped[int | None] = mapped_column(
+        ForeignKey("vendors.id", ondelete="SET NULL")
+    )
     wallet: Mapped[Wallet] = relationship()
     template: Mapped[CouponTemplate] = relationship()
 
@@ -234,8 +259,12 @@ class CouponInstance(IdMixin, TimestampMixin, Base):
 class CouponAudit(IdMixin, Base):
     __tablename__ = "coupon_audits"
     event_id: Mapped[int] = mapped_column(ForeignKey("events.id", ondelete="RESTRICT"), index=True)
-    coupon_id: Mapped[int | None] = mapped_column(ForeignKey("coupon_instances.id", ondelete="SET NULL"))
-    wallet_id: Mapped[int] = mapped_column(ForeignKey("wallets.id", ondelete="RESTRICT"), index=True)
+    coupon_id: Mapped[int | None] = mapped_column(
+        ForeignKey("coupon_instances.id", ondelete="SET NULL")
+    )
+    wallet_id: Mapped[int] = mapped_column(
+        ForeignKey("wallets.id", ondelete="RESTRICT"), index=True
+    )
     vendor_id: Mapped[int | None] = mapped_column(ForeignKey("vendors.id", ondelete="SET NULL"))
     reference: Mapped[str] = mapped_column(String(40), unique=True)
     action: Mapped[str] = mapped_column(String(30), index=True)
@@ -265,14 +294,20 @@ class ScheduledAction(IdMixin, TimestampMixin, Base):
 
 class ActionWalletOverride(Base):
     __tablename__ = "action_wallet_overrides"
-    action_id: Mapped[int] = mapped_column(ForeignKey("scheduled_actions.id", ondelete="CASCADE"), primary_key=True)
-    wallet_id: Mapped[int] = mapped_column(ForeignKey("wallets.id", ondelete="CASCADE"), primary_key=True)
+    action_id: Mapped[int] = mapped_column(
+        ForeignKey("scheduled_actions.id", ondelete="CASCADE"), primary_key=True
+    )
+    wallet_id: Mapped[int] = mapped_column(
+        ForeignKey("wallets.id", ondelete="CASCADE"), primary_key=True
+    )
     included: Mapped[bool] = mapped_column(Boolean, default=True)
 
 
 class ScheduledActionRun(IdMixin, Base):
     __tablename__ = "scheduled_action_runs"
-    action_id: Mapped[int] = mapped_column(ForeignKey("scheduled_actions.id", ondelete="CASCADE"), index=True)
+    action_id: Mapped[int] = mapped_column(
+        ForeignKey("scheduled_actions.id", ondelete="CASCADE"), index=True
+    )
     run_key: Mapped[str] = mapped_column(String(100), unique=True)
     run_type: Mapped[str] = mapped_column(String(30))
     affected_count: Mapped[int] = mapped_column(Integer, default=0)

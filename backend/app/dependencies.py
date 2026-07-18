@@ -36,7 +36,9 @@ def require_admin_csrf(
     admin_session: str | None = Cookie(default=None),
     x_csrf_token: str | None = Header(default=None),
 ) -> AdminUser:
-    session = db.scalar(select(AdminSession).where(AdminSession.token_hash == token_hash(admin_session or "")))
+    session = db.scalar(
+        select(AdminSession).where(AdminSession.token_hash == token_hash(admin_session or ""))
+    )
     if not session or not x_csrf_token or not safe_equal_hash(x_csrf_token, session.csrf_hash):
         raise ApiError(403, "csrf_failed", "Security check failed.")
     return admin
@@ -70,8 +72,9 @@ def require_vendor_csrf(
     vendor_session: str | None = Cookie(default=None),
     x_csrf_token: str | None = Header(default=None),
 ) -> Vendor:
-    session = db.scalar(select(VendorSession).where(VendorSession.token_hash == token_hash(vendor_session or "")))
+    session = db.scalar(
+        select(VendorSession).where(VendorSession.token_hash == token_hash(vendor_session or ""))
+    )
     if not session or not x_csrf_token or not safe_equal_hash(x_csrf_token, session.csrf_hash):
         raise ApiError(403, "csrf_failed", "Security check failed.")
     return vendor
-

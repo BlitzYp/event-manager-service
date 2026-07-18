@@ -1,4 +1,11 @@
-from app.security import coupon_id_from_token, coupon_token, hash_password, new_token, token_hash, verify_password
+from app.security import (
+    coupon_id_from_token,
+    coupon_token,
+    hash_password,
+    new_token,
+    token_hash,
+    verify_password,
+)
 
 
 def test_password_hash_is_salted_and_verifiable() -> None:
@@ -21,4 +28,3 @@ def test_coupon_token_is_opaque_and_tamper_evident() -> None:
     assert coupon_id_from_token(token) == 42
     assert coupon_id_from_token(token + "x") is None
     assert coupon_id_from_token("coupon.43." + token.rsplit(".", 1)[1]) is None
-

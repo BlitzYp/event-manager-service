@@ -8,10 +8,10 @@ target-version = "py312"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "B", "UP"]
+ignore = ["B008"] # FastAPI dependency declarations intentionally call Depends/File in defaults.
 
 [tool.mypy]
 python_version = "3.12"
 plugins = ["pydantic.mypy", "sqlalchemy.ext.mypy.plugin"]
 ignore_missing_imports = true
 check_untyped_defs = true
-

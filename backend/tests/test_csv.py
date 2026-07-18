@@ -30,4 +30,3 @@ def test_invalid_csv_rejects_the_whole_import(payload: bytes) -> None:
     with pytest.raises(ApiError) as error:
         validate_participant_csv(payload)
     assert error.value.status == 422
-

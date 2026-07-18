@@ -1,7 +1,8 @@
-from datetime import datetime
-from typing import Any
+from datetime import date, datetime, time
+from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
+from email_validator import EmailNotValidError, validate_email
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator, model_validator
 
 from .models import ActionType, EventMode, EventStatus, ScheduleType
 
@@ -14,9 +15,25 @@ class Message(ApiModel):
     message: str
 
 
+def normalize_admin_email(value: str) -> str:
+    try:
+        return validate_email(
+            value.strip(),
+            check_deliverability=False,
+            test_environment=True,
+        ).normalized.lower()
+    except EmailNotValidError as exc:
+        raise ValueError(str(exc)) from exc
+
+
 class LoginRequest(ApiModel):
-    email: EmailStr
+    email: str = Field(min_length=3, max_length=320)
     password: str = Field(min_length=8, max_length=200)
+
+    @field_validator("email")
+    @classmethod
+    def validate_admin_email(cls, value: str) -> str:
+        return normalize_admin_email(value)
 
 
 class EventCreate(ApiModel):
@@ -54,6 +71,7 @@ class ParticipantCreate(ApiModel):
 
 
 class ParticipantUpdate(ApiModel):
+    participant_code: str = Field(min_length=1, max_length=100)
     name: str = Field(min_length=1, max_length=255)
     group: str | None = Field(default=None, max_length=255)
     email: EmailStr | None = None
@@ -102,13 +120,30 @@ class ActionCreate(ApiModel):
     action_type: ActionType
     schedule_type: ScheduleType = ScheduleType.once
     execute_at: datetime
-    schedule_end: datetime | None = None
+    schedule_start: date | None = None
+    schedule_end: date | None = None
+    schedule_time: time | None = None
     auto_delete: bool = False
     excluded_wallet_ids: list[int] = []
+
+    @model_validator(mode="after")
+    def validate_daily_schedule(self) -> "ActionCreate":
+        if self.schedule_type == ScheduleType.daily:
+            if not self.schedule_start or not self.schedule_end or not self.schedule_time:
+                raise ValueError(
+                    "Daily schedules require start date, end date, and execution time."
+                )
+            if self.schedule_end < self.schedule_start:
+                raise ValueError("Schedule end date cannot be before its start date.")
+        return self
+
+
+class ActionWalletScope(ApiModel):
+    operation: Literal["include", "exclude", "execute"]
+    wallet_ids: list[int] = Field(min_length=1, max_length=10_000)
 
 
 class ErrorBody(ApiModel):
     code: str
     message: str
     fields: list[dict[str, Any]] | None = None
-

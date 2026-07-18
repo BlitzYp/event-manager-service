@@ -57,14 +57,23 @@ def record_coupon_audit(db: Session, coupon: CouponInstance, action_name: str, a
 
 
 def execute_action(
-    db: Session, action: ScheduledAction, run_type: str, actor: str, advance_schedule: bool = True
+    db: Session,
+    action: ScheduledAction,
+    run_type: str,
+    actor: str,
+    advance_schedule: bool = True,
+    wallet_ids_override: list[int] | None = None,
 ) -> ScheduledActionRun:
     schedule_key = action.execute_at.strftime("%Y%m%d%H%M")
     run_key = f"{action.id}:{schedule_key}:{run_type}"
     existing = db.scalar(select(ScheduledActionRun).where(ScheduledActionRun.run_key == run_key))
     if existing:
         return existing
-    wallet_ids = target_wallet_ids(db, action)
+    wallet_ids = (
+        list(dict.fromkeys(wallet_ids_override))
+        if wallet_ids_override is not None
+        else target_wallet_ids(db, action)
+    )
     affected = 0
     message = "No matching wallets."
     if action.action_type == ActionType.create_wallets:
@@ -78,9 +87,15 @@ def execute_action(
         message = f"Updated {affected} wallets."
     elif action.action_type == ActionType.delete_wallets:
         for wallet in db.scalars(select(Wallet).where(Wallet.id.in_(wallet_ids)).with_for_update()):
-            history = db.scalar(select(func.count(MoneyTransaction.id)).where(MoneyTransaction.wallet_id == wallet.id))
-            coupons = db.scalar(select(func.count(CouponInstance.id)).where(CouponInstance.wallet_id == wallet.id))
-            if history or coupons:
+            history = db.scalar(
+                select(func.count(MoneyTransaction.id)).where(
+                    MoneyTransaction.wallet_id == wallet.id
+                )
+            )
+            coupon_count = db.scalar(
+                select(func.count(CouponInstance.id)).where(CouponInstance.wallet_id == wallet.id)
+            )
+            if history or coupon_count:
                 wallet.enabled = False
                 continue
             db.query(PaymentQrGrant).filter(PaymentQrGrant.wallet_id == wallet.id).delete()
@@ -92,19 +107,25 @@ def execute_action(
         affected = issue_coupons(db, action.event_id, wallet_ids, actor)
         message = f"Issued {affected} coupons."
     elif action.action_type in {ActionType.disable_coupons, ActionType.enable_coupons}:
-        source = CouponStatus.available if action.action_type == ActionType.disable_coupons else CouponStatus.disabled
-        target = CouponStatus.disabled if source == CouponStatus.available else CouponStatus.available
-        coupons = list(
+        source = (
+            CouponStatus.available
+            if action.action_type == ActionType.disable_coupons
+            else CouponStatus.disabled
+        )
+        target = (
+            CouponStatus.disabled if source == CouponStatus.available else CouponStatus.available
+        )
+        coupon_rows = list(
             db.scalars(
                 select(CouponInstance)
                 .where(CouponInstance.wallet_id.in_(wallet_ids), CouponInstance.status == source)
                 .with_for_update()
             )
         )
-        for coupon in coupons:
+        for coupon in coupon_rows:
             coupon.status = target
             record_coupon_audit(db, coupon, target.value, actor)
-        affected = len(coupons)
+        affected = len(coupon_rows)
         message = f"Updated {affected} coupons."
     run = ScheduledActionRun(
         action_id=action.id,

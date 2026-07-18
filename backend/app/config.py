@@ -15,6 +15,7 @@ class Settings(BaseSettings):
     admin_session_hours: int = 12
     vendor_session_idle_minutes: int = 30
     pending_payment_minutes: int = 5
+    admin_wallet_preview_minutes: int = 5
 
 
 @lru_cache
@@ -23,4 +24,3 @@ def get_settings() -> Settings:
 
 
 settings = get_settings()
-

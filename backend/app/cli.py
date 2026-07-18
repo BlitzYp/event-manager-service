@@ -6,14 +6,19 @@ from sqlalchemy import select
 
 from .database import SessionLocal
 from .models import AdminUser, Event, EventMode, EventStatus
+from .schemas import normalize_admin_email
 from .security import hash_password
 
 
 def create_admin(email: str | None, password: str | None) -> None:
-    email = (email or os.getenv("ADMIN_EMAIL") or input("Admin email: ")).strip().lower()
+    raw_email = email or os.getenv("ADMIN_EMAIL") or input("Admin email: ")
+    try:
+        email = normalize_admin_email(raw_email)
+    except ValueError as exc:
+        raise SystemExit(f"Invalid admin email: {exc}") from exc
     password = password or os.getenv("ADMIN_PASSWORD") or getpass.getpass("Admin password: ")
-    if len(password) < 12:
-        raise SystemExit("Password must be at least 12 characters.")
+    if len(password) < 8:
+        raise SystemExit("Password must be at least 8 characters.")
     with SessionLocal() as db:
         admin = db.scalar(select(AdminUser).where(AdminUser.email == email))
         if admin:
@@ -36,8 +41,12 @@ def seed_demo() -> None:
             return
         db.add(
             Event(
-                code="demo", name="Community Summer Event", status=EventStatus.active,
-                mode=EventMode.both, currency="EUR", default_balance_minor=5000,
+                code="demo",
+                name="Community Summer Event",
+                status=EventStatus.active,
+                mode=EventMode.both,
+                currency="EUR",
+                default_balance_minor=5000,
             )
         )
         db.commit()
@@ -57,4 +66,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

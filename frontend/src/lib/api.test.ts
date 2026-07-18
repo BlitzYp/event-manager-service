@@ -6,4 +6,3 @@ describe("money", () => {
     expect(money(1250, "EUR")).toContain("12.50");
   });
 });
-

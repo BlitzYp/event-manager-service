@@ -35,7 +35,9 @@ router = APIRouter(prefix="/vendor", tags=["vendor-wallet"])
 
 
 @router.post("/login")
-def login(payload: VendorLogin, request: Request, response: Response, db: Session = Depends(get_db)) -> dict:
+def login(
+    payload: VendorLogin, request: Request, response: Response, db: Session = Depends(get_db)
+) -> dict:
     ip_hash = keyed_lookup(request.client.host if request.client else "unknown", "vendor-ip")
     attempts = db.scalar(
         select(func.count(VendorLoginAttempt.id)).where(
@@ -46,7 +48,11 @@ def login(payload: VendorLogin, request: Request, response: Response, db: Sessio
     )
     if int(attempts or 0) >= 10:
         raise ApiError(429, "login_limited", "Too many attempts. Try again later.")
-    event = db.scalar(select(Event).where(Event.code == payload.event_code.lower(), Event.status == EventStatus.active))
+    event = db.scalar(
+        select(Event).where(
+            Event.code == payload.event_code.lower(), Event.status == EventStatus.active
+        )
+    )
     vendor = None
     if event:
         vendor = db.scalar(
@@ -70,26 +76,46 @@ def login(payload: VendorLogin, request: Request, response: Response, db: Sessio
     vendor.last_login_at = utcnow()
     db.commit()
     response.set_cookie(
-        "vendor_session", raw_session, httponly=True, secure=settings.cookie_secure,
-        samesite="lax", max_age=settings.vendor_session_idle_minutes * 60, path="/",
+        "vendor_session",
+        raw_session,
+        httponly=True,
+        secure=settings.cookie_secure,
+        samesite="lax",
+        max_age=settings.vendor_session_idle_minutes * 60,
+        path="/",
     )
     return {
-        "vendor": {"id": vendor.id, "name": vendor.name, "event_id": vendor.event_id, "event_name": vendor.event.name},
+        "vendor": {
+            "id": vendor.id,
+            "name": vendor.name,
+            "event_id": vendor.event_id,
+            "event_name": vendor.event.name,
+        },
         "csrf_token": raw_csrf,
     }
 
 
 @router.get("/me")
 def me(vendor: Vendor = Depends(require_vendor)) -> dict:
-    return {"vendor": {"id": vendor.id, "name": vendor.name, "event_id": vendor.event_id, "event_name": vendor.event.name}}
+    return {
+        "vendor": {
+            "id": vendor.id,
+            "name": vendor.name,
+            "event_id": vendor.event_id,
+            "event_name": vendor.event.name,
+        }
+    }
 
 
 @router.post("/csrf")
 def csrf(
-    vendor: Vendor = Depends(require_vendor), db: Session = Depends(get_db),
+    vendor: Vendor = Depends(require_vendor),
+    db: Session = Depends(get_db),
     vendor_session: str | None = Cookie(default=None),
 ) -> dict:
-    row = db.scalar(select(VendorSession).where(VendorSession.token_hash == token_hash(vendor_session or "")))
+    row = db.scalar(
+        select(VendorSession).where(VendorSession.token_hash == token_hash(vendor_session or ""))
+    )
     if not row:
         raise ApiError(401, "authentication_required", "Authentication required.")
     raw = new_token()
@@ -100,10 +126,14 @@ def csrf(
 
 @router.post("/logout")
 def logout(
-    response: Response, vendor: Vendor = Depends(require_vendor_csrf), db: Session = Depends(get_db),
+    response: Response,
+    vendor: Vendor = Depends(require_vendor_csrf),
+    db: Session = Depends(get_db),
     vendor_session: str | None = Cookie(default=None),
 ) -> dict:
-    row = db.scalar(select(VendorSession).where(VendorSession.token_hash == token_hash(vendor_session or "")))
+    row = db.scalar(
+        select(VendorSession).where(VendorSession.token_hash == token_hash(vendor_session or ""))
+    )
     if row:
         row.revoked_at = utcnow()
         db.commit()
@@ -113,44 +143,98 @@ def logout(
 
 @router.get("/lookup")
 def lookup(
-    qr_token: str | None = None, participant_code: str | None = None,
-    vendor: Vendor = Depends(require_vendor), db: Session = Depends(get_db),
+    qr_token: str | None = None,
+    participant_code: str | None = None,
+    vendor: Vendor = Depends(require_vendor),
+    db: Session = Depends(get_db),
 ) -> dict:
     coupon_id = coupon_id_from_token(qr_token or "")
     if coupon_id:
-        coupon = db.scalar(select(CouponInstance).where(CouponInstance.id == coupon_id, CouponInstance.event_id == vendor.event_id))
+        coupon = db.scalar(
+            select(CouponInstance).where(
+                CouponInstance.id == coupon_id, CouponInstance.event_id == vendor.event_id
+            )
+        )
         if not coupon:
             raise ApiError(404, "item_unavailable", "QR code is invalid or unavailable.")
         template = db.get(CouponTemplate, coupon.template_id)
         if not template or (template.vendor_id and template.vendor_id != vendor.id):
             raise ApiError(404, "item_unavailable", "QR code is invalid or unavailable.")
-        return {"kind": "coupon", "coupon": {"token": qr_token, "name": template.name, "status": coupon.status, "participant_name": coupon.wallet.participant.name}}
+        return {
+            "kind": "coupon",
+            "coupon": {
+                "token": qr_token,
+                "name": template.name,
+                "status": coupon.status,
+                "participant_name": coupon.wallet.participant.name,
+            },
+        }
     wallet, _ = resolve_payment_target(db, vendor, qr_token, participant_code)
-    return {"kind": "wallet", "wallet": {"id": wallet.id, "participant_code": wallet.participant.participant_code, "participant_name": wallet.participant.name, "group": wallet.participant.group_name, "balance_minor": wallet.balance_minor, "reserved_minor": reserved_minor(db, wallet.id), "currency": wallet.event.currency}}
+    return {
+        "kind": "wallet",
+        "wallet": {
+            "id": wallet.id,
+            "participant_code": wallet.participant.participant_code,
+            "participant_name": wallet.participant.name,
+            "group": wallet.participant.group_name,
+            "balance_minor": wallet.balance_minor,
+            "reserved_minor": reserved_minor(db, wallet.id),
+            "currency": wallet.event.currency,
+        },
+    }
 
 
 @router.post("/payments")
 def create_payment(
-    payload: PaymentCreate, vendor: Vendor = Depends(require_vendor_csrf), db: Session = Depends(get_db)
+    payload: PaymentCreate,
+    vendor: Vendor = Depends(require_vendor_csrf),
+    db: Session = Depends(get_db),
 ) -> dict:
     row = create_vendor_payment(
-        db, vendor, payload.amount_minor, payload.request_key, payload.qr_token,
-        payload.participant_code, payload.wallet_id,
+        db,
+        vendor,
+        payload.amount_minor,
+        payload.request_key,
+        payload.qr_token,
+        payload.participant_code,
+        payload.wallet_id,
     )
-    return {"transaction": {"id": row.id, "reference": row.reference, "status": row.status, "amount_minor": row.amount_minor}}
+    return {
+        "transaction": {
+            "id": row.id,
+            "reference": row.reference,
+            "status": row.status,
+            "amount_minor": row.amount_minor,
+        }
+    }
 
 
 @router.get("/payments/{transaction_id}")
-def payment_status(transaction_id: int, vendor: Vendor = Depends(require_vendor), db: Session = Depends(get_db)) -> dict:
-    row = db.scalar(select(MoneyTransaction).where(MoneyTransaction.id == transaction_id, MoneyTransaction.vendor_id == vendor.id))
+def payment_status(
+    transaction_id: int, vendor: Vendor = Depends(require_vendor), db: Session = Depends(get_db)
+) -> dict:
+    row = db.scalar(
+        select(MoneyTransaction).where(
+            MoneyTransaction.id == transaction_id, MoneyTransaction.vendor_id == vendor.id
+        )
+    )
     if not row:
         raise ApiError(404, "not_found", "Payment was not found.")
-    return {"transaction": {"id": row.id, "reference": row.reference, "status": row.status, "amount_minor": row.amount_minor}}
+    return {
+        "transaction": {
+            "id": row.id,
+            "reference": row.reference,
+            "status": row.status,
+            "amount_minor": row.amount_minor,
+        }
+    }
 
 
 @router.post("/coupons/redeem")
 def redeem_coupon(
-    payload: CouponRedeem, vendor: Vendor = Depends(require_vendor_csrf), db: Session = Depends(get_db)
+    payload: CouponRedeem,
+    vendor: Vendor = Depends(require_vendor_csrf),
+    db: Session = Depends(get_db),
 ) -> dict:
     coupon_id = coupon_id_from_token(payload.token)
     coupon = db.scalar(
@@ -162,17 +246,35 @@ def redeem_coupon(
         raise ApiError(409, "coupon_unavailable", "Coupon is invalid or unavailable.")
     template = db.get(CouponTemplate, coupon.template_id)
     wallet = db.scalar(select(Wallet).where(Wallet.id == coupon.wallet_id).with_for_update())
-    if not template or not wallet or not wallet.enabled or (template.vendor_id and template.vendor_id != vendor.id):
+    if (
+        not template
+        or not wallet
+        or not wallet.enabled
+        or (template.vendor_id and template.vendor_id != vendor.id)
+    ):
         raise ApiError(409, "coupon_unavailable", "Coupon is invalid or unavailable.")
     coupon.status = CouponStatus.redeemed
     coupon.redeemed_at = utcnow()
     coupon.redeemed_by_vendor_id = vendor.id
     audit = CouponAudit(
-        event_id=vendor.event_id, coupon_id=coupon.id, wallet_id=wallet.id, vendor_id=vendor.id,
-        reference=reference("CPR"), action="redeemed", coupon_name=template.name,
-        participant_code=wallet.participant.participant_code, participant_name=wallet.participant.name,
-        vendor_name=vendor.name, actor=f"vendor:{vendor.id}",
+        event_id=vendor.event_id,
+        coupon_id=coupon.id,
+        wallet_id=wallet.id,
+        vendor_id=vendor.id,
+        reference=reference("CPR"),
+        action="redeemed",
+        coupon_name=template.name,
+        participant_code=wallet.participant.participant_code,
+        participant_name=wallet.participant.name,
+        vendor_name=vendor.name,
+        actor=f"vendor:{vendor.id}",
     )
     db.add(audit)
     db.commit()
-    return {"redemption": {"reference": audit.reference, "coupon_name": template.name, "participant_name": wallet.participant.name}}
+    return {
+        "redemption": {
+            "reference": audit.reference,
+            "coupon_name": template.name,
+            "participant_name": wallet.participant.name,
+        }
+    }

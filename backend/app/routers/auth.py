@@ -18,7 +18,11 @@ router = APIRouter(prefix="/auth", tags=["admin-auth"])
 @router.post("/login")
 def login(payload: LoginRequest, response: Response, db: Session = Depends(get_db)) -> dict:
     admin = db.scalar(select(AdminUser).where(AdminUser.email == payload.email.lower()))
-    if not admin or not admin.is_active or not verify_password(payload.password, admin.password_hash):
+    if (
+        not admin
+        or not admin.is_active
+        or not verify_password(payload.password, admin.password_hash)
+    ):
         raise ApiError(401, "invalid_credentials", "Email or password is incorrect.")
     raw_session, raw_csrf = new_token(), new_token()
     db.add(
@@ -31,8 +35,13 @@ def login(payload: LoginRequest, response: Response, db: Session = Depends(get_d
     )
     db.commit()
     response.set_cookie(
-        "admin_session", raw_session, httponly=True, secure=settings.cookie_secure,
-        samesite="lax", max_age=settings.admin_session_hours * 3600, path="/",
+        "admin_session",
+        raw_session,
+        httponly=True,
+        secure=settings.cookie_secure,
+        samesite="lax",
+        max_age=settings.admin_session_hours * 3600,
+        path="/",
     )
     return {"user": {"id": admin.id, "email": admin.email}, "csrf_token": raw_csrf}
 
@@ -44,10 +53,13 @@ def me(admin: AdminUser = Depends(require_admin)) -> dict:
 
 @router.post("/csrf")
 def csrf(
-    admin: AdminUser = Depends(require_admin), db: Session = Depends(get_db),
+    admin: AdminUser = Depends(require_admin),
+    db: Session = Depends(get_db),
     admin_session: str | None = Cookie(default=None),
 ) -> dict:
-    row = db.scalar(select(AdminSession).where(AdminSession.token_hash == token_hash(admin_session or "")))
+    row = db.scalar(
+        select(AdminSession).where(AdminSession.token_hash == token_hash(admin_session or ""))
+    )
     if not row:
         raise ApiError(401, "authentication_required", "Authentication required.")
     raw = new_token()
@@ -63,7 +75,9 @@ def logout(
     db: Session = Depends(get_db),
     admin_session: str | None = Cookie(default=None),
 ) -> dict:
-    row = db.scalar(select(AdminSession).where(AdminSession.token_hash == token_hash(admin_session or "")))
+    row = db.scalar(
+        select(AdminSession).where(AdminSession.token_hash == token_hash(admin_session or ""))
+    )
     if row:
         row.revoked_at = utcnow()
         db.commit()

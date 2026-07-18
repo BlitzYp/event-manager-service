@@ -1,2 +1,1 @@
 """Standalone event manager API."""
-

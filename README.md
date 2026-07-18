@@ -2,6 +2,8 @@
 
 An independent event wallet, payment, and coupon platform. It supports multiple live events, participant wallet links, vendor PIN access, short-lived payment QR codes, optional participant approval, coupon redemption, immutable audit ledgers, and scheduled bulk actions.
 
+For architecture diagrams, model relationships, common functions, and detailed Windows/Linux development commands, see [`DEVELOPER_GUIDE.md`](DEVELOPER_GUIDE.md).
+
 ## Architecture
 
 - **API:** Python 3.12, FastAPI, SQLAlchemy 2, Alembic
@@ -11,35 +13,114 @@ An independent event wallet, payment, and coupon platform. It supports multiple 
 
 Money is stored as integer minor units. Every record is scoped to an event; there is no global current-event state. Participant wallet secrets and session tokens are stored as SHA-256 hashes, passwords and vendor PINs use Argon2id, and PIN lookup uses a keyed HMAC before Argon2 verification.
 
+## Prerequisites
+
+- Docker Desktop on Windows/macOS, or Docker Engine with the Compose plugin on Linux.
+- For development outside Docker: Python 3.12, Node.js 22, Corepack, and pnpm.
+
+Verify Docker before starting:
+
+```bash
+docker --version
+docker compose version
+```
+
+On Linux, if Docker requires `sudo`, either prefix the commands below with `sudo` or configure Docker's non-root access for your user.
+
 ## Quick start
 
-1. Copy the environment template:
+1. Copy the environment template.
+
+   Windows PowerShell:
 
    ```powershell
    Copy-Item .env.example .env
    ```
 
+   Linux/macOS:
+
+   ```bash
+   cp .env.example .env
+   ```
+
 2. Replace `APP_SECRET_KEY` and all database passwords in `.env`. Generate a secret with:
+
+   Windows PowerShell:
 
    ```powershell
    python -c "import secrets; print(secrets.token_urlsafe(48))"
    ```
 
-3. Start the stack:
+   Linux/macOS:
 
-   ```powershell
+   ```bash
+   python3 -c 'import secrets; print(secrets.token_urlsafe(48))'
+   ```
+
+3. Start the stack. This command is the same in PowerShell and Linux shells:
+
+   ```bash
    docker compose up --build -d
+   docker compose ps
    ```
 
 4. Create the initial administrator without placing the password in shell history:
 
-   ```powershell
+   ```bash
    docker compose run --rm api python -m app.cli create-admin
    ```
 
 5. Open [http://localhost:3000/admin](http://localhost:3000/admin). Vendors use [http://localhost:3000/wallet](http://localhost:3000/wallet).
 
-Optionally run `docker compose run --rm api python -m app.cli seed-demo` to create a development-only event.
+Optionally create development-only sample data:
+
+```bash
+docker compose run --rm api python -m app.cli seed-demo
+```
+
+Useful lifecycle commands on either operating system:
+
+```bash
+# Follow service logs
+docker compose logs -f api web scheduler
+
+# Stop containers while preserving the MySQL volume
+docker compose down
+
+# Rebuild and restart after code changes
+docker compose up --build -d
+```
+
+### Development mode with automatic reload
+
+Use the development override while actively editing code:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
+```
+
+This bind-mounts the backend and frontend source directories into their containers. FastAPI reloads after Python changes, Next.js applies hot reload after frontend changes, and the scheduler restarts after backend Python changes. You normally do not need to rebuild for source-code edits.
+
+The web container synchronizes its locked dependencies at startup, so after changing `frontend/package.json` or `frontend/pnpm-lock.yaml`, restart `web`. Rebuild after changing `backend/requirements.txt` or a Dockerfile:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
+```
+
+Run detached and follow logs if preferred:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build -d
+docker compose -f docker-compose.yml -f docker-compose.dev.yml logs -f api web scheduler
+```
+
+Stop the development stack while preserving MySQL data and dependency caches:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.dev.yml down
+```
+
+The normal `docker compose up` command remains the production-style local build and does not enable hot reload.
 
 ## Participant onboarding
 
@@ -63,20 +144,33 @@ The import is all-or-nothing. A successful import downloads a one-time result CS
 
 ## Development
 
-Backend:
+### Backend — Windows PowerShell
 
 ```powershell
 cd backend
 python -m venv .venv
-.venv\Scripts\pip install -r requirements.txt
+.venv\Scripts\Activate.ps1
+python -m pip install -r requirements.txt
 ruff check app tests
 mypy app
 pytest
 ```
 
-Frontend:
+### Backend — Linux/macOS
 
-```powershell
+```bash
+cd backend
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install -r requirements.txt
+ruff check app tests
+mypy app
+pytest
+```
+
+### Frontend — Windows, Linux, or macOS
+
+```bash
 cd frontend
 corepack enable
 pnpm install --frozen-lockfile
@@ -95,4 +189,3 @@ The OpenAPI document is available at `/api/openapi.json`; generate frontend type
 - Do not expose MySQL publicly; the published port is intended only for local development.
 - Back up MySQL, test restores, retain audit records, and monitor API/scheduler health and failed vendor logins.
 - Run `alembic upgrade head` before each API rollout. The Compose API command does this automatically.
-

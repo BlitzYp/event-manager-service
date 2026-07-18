@@ -10,17 +10,29 @@ class ApiError(Exception):
         self.message = message
 
 
-async def api_error_handler(_: Request, exc: ApiError) -> JSONResponse:
-    return JSONResponse(exc.status, {"error": {"code": exc.code, "message": exc.message}})
+async def api_error_handler(_: Request, exc: Exception) -> JSONResponse:
+    if not isinstance(exc, ApiError):
+        raise exc
+    return JSONResponse(
+        content={"error": {"code": exc.code, "message": exc.message}},
+        status_code=exc.status,
+    )
 
 
-async def validation_error_handler(_: Request, exc: RequestValidationError) -> JSONResponse:
+async def validation_error_handler(_: Request, exc: Exception) -> JSONResponse:
+    if not isinstance(exc, RequestValidationError):
+        raise exc
     fields = [
         {"path": ".".join(str(part) for part in error["loc"][1:]), "message": error["msg"]}
         for error in exc.errors()
     ]
     return JSONResponse(
-        422,
-        {"error": {"code": "validation_error", "message": "Invalid request.", "fields": fields}},
+        content={
+            "error": {
+                "code": "validation_error",
+                "message": "Invalid request.",
+                "fields": fields,
+            }
+        },
+        status_code=422,
     )
-

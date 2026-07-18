@@ -4,6 +4,11 @@ RUN corepack enable
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 RUN pnpm install --frozen-lockfile
 
+FROM dependencies AS development
+COPY . .
+ENV NODE_ENV=development
+CMD ["pnpm", "dev", "--hostname", "0.0.0.0"]
+
 FROM node:22-alpine AS builder
 WORKDIR /app
 RUN corepack enable

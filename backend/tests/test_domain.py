@@ -9,4 +9,3 @@ def test_event_modes_are_explicit() -> None:
     assert event_supports(money, "money") and not event_supports(money, "coupons")
     assert event_supports(coupons, "coupons") and not event_supports(coupons, "money")
     assert event_supports(both, "money") and event_supports(both, "coupons")
-

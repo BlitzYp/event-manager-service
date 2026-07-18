@@ -3,9 +3,9 @@ from __future__ import annotations
 import csv
 import io
 import secrets
-from datetime import timedelta
+from datetime import datetime, timedelta
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -19,7 +19,6 @@ from .models import (
     CouponTemplate,
     Event,
     EventMode,
-    EventStatus,
     MoneyTransaction,
     Participant,
     PaymentQrGrant,
@@ -99,13 +98,28 @@ def rotate_wallet_token(db: Session, wallet: Wallet) -> str:
     return raw_token
 
 
+def create_wallet_preview_token(db: Session, wallet: Wallet) -> tuple[str, datetime]:
+    raw_token = new_token()
+    expires_at = utcnow() + timedelta(minutes=settings.admin_wallet_preview_minutes)
+    db.add(
+        WalletAccessToken(
+            wallet_id=wallet.id,
+            token_hash=token_hash(raw_token),
+            expires_at=expires_at,
+        )
+    )
+    return raw_token, expires_at
+
+
 def wallet_for_access_token(db: Session, raw_token: str, lock: bool = False) -> Wallet:
+    now = utcnow()
     query = (
         select(Wallet)
         .join(WalletAccessToken, WalletAccessToken.wallet_id == Wallet.id)
         .where(
             WalletAccessToken.token_hash == token_hash(raw_token),
             WalletAccessToken.revoked_at.is_(None),
+            or_(WalletAccessToken.expires_at.is_(None), WalletAccessToken.expires_at > now),
         )
     )
     if lock:
@@ -153,11 +167,19 @@ def create_payment_qr(db: Session, wallet: Wallet) -> tuple[str, int]:
 
 
 def resolve_payment_target(
-    db: Session, vendor: Vendor, qr_token: str | None, participant_code: str | None, lock: bool = False
+    db: Session,
+    vendor: Vendor,
+    qr_token: str | None,
+    participant_code: str | None,
+    lock: bool = False,
 ) -> tuple[Wallet, PaymentQrGrant | None]:
-    query = select(Wallet).join(Participant).where(
-        Wallet.event_id == vendor.event_id,
-        Participant.participant_code == (participant_code or ""),
+    query = (
+        select(Wallet)
+        .join(Participant)
+        .where(
+            Wallet.event_id == vendor.event_id,
+            Participant.participant_code == (participant_code or ""),
+        )
     )
     grant = None
     if qr_token:
@@ -172,7 +194,9 @@ def resolve_payment_target(
         )
         grant = db.scalar(grant_query)
         if grant:
-            query = select(Wallet).where(Wallet.id == grant.wallet_id, Wallet.event_id == vendor.event_id)
+            query = select(Wallet).where(
+                Wallet.id == grant.wallet_id, Wallet.event_id == vendor.event_id
+            )
     if lock:
         query = query.with_for_update()
     wallet = db.scalar(query)
@@ -210,7 +234,9 @@ def create_vendor_payment(
     if grant:
         grant.consumed_at = now
     participant = wallet.participant
-    status = TransactionStatus.pending if wallet.event.approval_required else TransactionStatus.approved
+    status = (
+        TransactionStatus.pending if wallet.event.approval_required else TransactionStatus.approved
+    )
     transaction = MoneyTransaction(
         event_id=wallet.event_id,
         wallet_id=wallet.id,
@@ -289,7 +315,11 @@ def decide_payment(
 
 def issue_coupons(db: Session, event_id: int, wallet_ids: list[int] | None, actor: str) -> int:
     templates = list(
-        db.scalars(select(CouponTemplate).where(CouponTemplate.event_id == event_id, CouponTemplate.active.is_(True)))
+        db.scalars(
+            select(CouponTemplate).where(
+                CouponTemplate.event_id == event_id, CouponTemplate.active.is_(True)
+            )
+        )
     )
     wallet_query = select(Wallet).where(Wallet.event_id == event_id)
     if wallet_ids is not None:
@@ -356,7 +386,12 @@ def validate_participant_csv(content: bytes) -> list[dict[str, str | None]]:
             errors.append(f"Row {line}: duplicate participant_code '{code}'.")
         seen.add(code)
         rows.append(
-            {"participant_code": code, "name": name, "group": (raw.get("group") or "").strip() or None, "email": (raw.get("email") or "").strip() or None}
+            {
+                "participant_code": code,
+                "name": name,
+                "group": (raw.get("group") or "").strip() or None,
+                "email": (raw.get("email") or "").strip() or None,
+            }
         )
     if errors:
         raise ApiError(422, "invalid_csv", " ".join(errors[:20]))

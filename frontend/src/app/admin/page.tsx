@@ -1,19 +1,15 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useState } from "react";
-import { CalendarPlus, Clock3, Download, LogOut, Plus, RefreshCw, Ticket, Upload, Users, WalletCards } from "lucide-react";
+import Link from "next/link";
+import { type FormEvent, useCallback, useEffect, useState } from "react";
+import { LogOut, RefreshCw, Smartphone, WalletCards } from "lucide-react";
+import { EventWorkspace } from "@/components/admin/EventWorkspace";
+import type { Event } from "@/components/admin/types";
 import { Brand } from "@/components/Shell";
 import { ApiFailure, api, money } from "@/lib/api";
 
-type Event = { id: number; code: string; name: string; status: "draft"|"active"|"archived"; mode: "money"|"coupons"|"both"; currency: string; default_balance_minor: number; approval_required: boolean; qr_ttl_seconds: number; pending_payment_minutes: number };
-type Participant = { id: number; participant_code: string; name: string; group?: string; email?: string; wallet: { id: number; balance_minor: number; reserved_minor: number; enabled: boolean } };
-type Vendor = { id: number; name: string; active: boolean; last_login_at?: string };
-type Template = { id: number; name: string; vendor_id?: number; sort_order: number; active: boolean };
-type Transaction = { id: number; reference: string; type: string; status: string; amount_minor: number; participant_name: string; vendor_name?: string; created_at: string };
-type ScheduledAction = { id:number; name:string; action_type:string; schedule_type:string; execute_at:string; enabled:boolean; completed_at?:string };
-
 export default function AdminPage() {
-  const [user, setUser] = useState<{email:string}|null>(null);
+  const [user, setUser] = useState<{ email: string } | null>(null);
   const [csrf, setCsrf] = useState("");
   const [error, setError] = useState("");
   const [events, setEvents] = useState<Event[]>([]);
@@ -21,57 +17,146 @@ export default function AdminPage() {
 
   const bootstrap = useCallback(async () => {
     try {
-      const me = await api<{user:{email:string}}>("/auth/me");
-      const token = await api<{csrf_token:string}>("/auth/csrf", {method:"POST"});
-      setUser(me.user); setCsrf(token.csrf_token);
-      const result = await api<{events:Event[]}>("/admin/events");
-      setEvents(result.events); setEventId((current) => current ?? result.events[0]?.id);
-    } catch { setUser(null); }
+      const me = await api<{ user: { email: string } }>("/auth/me");
+      const token = await api<{ csrf_token: string }>("/auth/csrf", { method: "POST" });
+      const result = await api<{ events: Event[] }>("/admin/events");
+      setUser(me.user);
+      setCsrf(token.csrf_token);
+      setEvents(result.events);
+      setEventId((current) =>
+        current && result.events.some((event) => event.id === current)
+          ? current
+          : result.events[0]?.id,
+      );
+    } catch {
+      setUser(null);
+    }
   }, []);
-  useEffect(() => { void bootstrap(); }, [bootstrap]);
+
+  useEffect(() => {
+    void bootstrap();
+  }, [bootstrap]);
 
   async function login(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault(); setError("");
+    event.preventDefault();
+    setError("");
     const form = new FormData(event.currentTarget);
     try {
-      const result = await api<{user:{email:string};csrf_token:string}>("/auth/login", {method:"POST", body:JSON.stringify({email:form.get("email"),password:form.get("password")})});
-      setUser(result.user); setCsrf(result.csrf_token); await bootstrap();
-    } catch (failure) { setError(failure instanceof ApiFailure ? failure.message : "Sign in failed."); }
+      const result = await api<{ user: { email: string }; csrf_token: string }>(
+        "/auth/login",
+        {
+          method: "POST",
+          body: JSON.stringify({ email: form.get("email"), password: form.get("password") }),
+        },
+      );
+      setUser(result.user);
+      setCsrf(result.csrf_token);
+      await bootstrap();
+    } catch (failure) {
+      setError(failure instanceof ApiFailure ? failure.message : "Sign in failed.");
+    }
   }
 
-  if (!user) return <main className="grid min-h-screen place-items-center px-5"><form onSubmit={login} className="card w-full max-w-md p-7"><Brand/><h1 className="mt-8 font-[var(--font-display)] text-3xl font-bold">Administrator sign in</h1><p className="mt-2 text-sm text-black/55">Manage events, participants and audit records.</p>{error && <p className="mt-5 rounded-xl bg-red-50 p-3 text-sm text-red-700">{error}</p>}<label className="label mt-6">Email</label><input className="input" name="email" type="email" required autoComplete="email"/><label className="label mt-4">Password</label><input className="input" name="password" type="password" required autoComplete="current-password"/><button className="button mt-6 w-full">Sign in</button></form></main>;
+  if (!user) {
+    return (
+      <main className="grid min-h-screen place-items-center bg-[#e9ecef] px-4 py-10">
+        <form onSubmit={login} className="card w-full max-w-md p-7 md:p-8">
+          <div className="-mx-7 -mt-7 mb-7 rounded-t-lg bg-gradient-to-br from-[#397c22] to-leaf-600 px-7 py-5 text-white md:-mx-8 md:-mt-8 md:px-8">
+            <Brand />
+          </div>
+          <span className="wallet-icon mb-3"><WalletCards size={22} /></span>
+          <h1 className="text-3xl font-semibold">Administrator sign in</h1>
+          <p className="mt-2 text-sm text-black/55">Manage events, participants and audit records.</p>
+          {error && <p className="alert-error mt-5 text-sm">{error}</p>}
+          <label className="label mt-6">Email</label>
+          <input className="input" name="email" type="email" required autoComplete="email" />
+          <label className="label mt-4">Password</label>
+          <input className="input" name="password" type="password" required autoComplete="current-password" />
+          <button className="button mt-6 w-full">Sign in</button>
+        </form>
+      </main>
+    );
+  }
 
   const selected = events.find((item) => item.id === eventId);
-  return <div className="min-h-screen"><header className="border-b border-black/5 bg-white"><div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-5 py-4"><Brand/><div className="flex items-center gap-3 text-sm"><span className="hidden text-black/50 sm:block">{user.email}</span><button className="button-secondary min-h-9 px-3" onClick={async()=>{await api("/auth/logout",{method:"POST"},csrf);setUser(null)}}><LogOut size={16}/> Sign out</button></div></div></header><main className="mx-auto max-w-7xl px-5 py-8"><div className="flex flex-col justify-between gap-4 md:flex-row md:items-end"><div><p className="text-sm font-semibold uppercase tracking-widest text-leaf-600">Administration</p><h1 className="mt-2 font-[var(--font-display)] text-4xl font-bold">Event operations</h1></div><div className="flex gap-2"><select className="input min-w-56" value={eventId ?? ""} onChange={(e)=>setEventId(Number(e.target.value))}><option value="">Select an event</option>{events.map((item)=><option key={item.id} value={item.id}>{item.name} · {item.status}</option>)}</select><button className="button-secondary" onClick={()=>void bootstrap()} aria-label="Refresh"><RefreshCw size={18}/></button></div></div><EventCreator csrf={csrf} onCreated={bootstrap}/>{selected ? <EventWorkspace event={selected} csrf={csrf}/> : <div className="card mt-8 p-10 text-center text-black/50">Create or select an event to continue.</div>}</main></div>;
+  return (
+    <div className="min-h-screen bg-[#f8f9fa]">
+      <header className="bg-[#212529] text-white shadow-sm">
+        <div className="mx-auto flex max-w-[1440px] items-center justify-between gap-4 px-4 py-3 sm:px-6">
+          <Brand />
+          <div className="flex items-center gap-2 text-sm">
+            <span className="hidden text-white/75 md:block">{user.email}</span>
+            <button
+              className="inline-flex min-h-9 items-center gap-2 rounded-md bg-white px-3 py-2 font-semibold text-[#212529] hover:bg-white/90"
+              onClick={async () => {
+                await api("/auth/logout", { method: "POST" }, csrf);
+                setUser(null);
+              }}
+            >
+              <LogOut size={16} /> <span className="hidden sm:inline">Sign out</span>
+            </button>
+          </div>
+        </div>
+      </header>
+
+      <main className="mx-auto max-w-[1440px] px-4 py-10 sm:px-6">
+        <div className="mb-6 flex flex-col justify-between gap-4 md:flex-row md:items-center">
+          <div>
+            <h1 className="text-3xl font-semibold">Virtual wallet</h1>
+            <p className="mt-1 text-black/50">
+              {selected?.name || "Create or select an event to begin"}
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Link className="button-secondary" href="/wallet" target="_blank">
+              <Smartphone size={17} /> Vendor portal
+            </Link>
+            <select
+              className="input min-w-56"
+              value={eventId ?? ""}
+              onChange={(event) => setEventId(Number(event.target.value))}
+              aria-label="Selected event"
+            >
+              <option value="">Select an event</option>
+              {events.map((item) => (
+                <option key={item.id} value={item.id}>{item.name} · {item.status}</option>
+              ))}
+            </select>
+            <button className="button-secondary px-3" onClick={() => void bootstrap()} aria-label="Refresh">
+              <RefreshCw size={18} />
+            </button>
+          </div>
+        </div>
+
+        {selected && (
+          <div className="mb-6 grid gap-4 md:grid-cols-3">
+            <Stat label="Event status" value={selected.status} />
+            <Stat label="Systems" value={selected.mode === "both" ? "Money + coupons" : selected.mode} />
+            <Stat
+              accent
+              label="Default wallet balance"
+              value={money(selected.default_balance_minor, selected.currency)}
+            />
+          </div>
+        )}
+
+        <EventWorkspace
+          event={selected}
+          events={events}
+          csrf={csrf}
+          onSelectEvent={setEventId}
+          onEventsChanged={bootstrap}
+        />
+      </main>
+    </div>
+  );
 }
 
-function EventCreator({csrf,onCreated}:{csrf:string;onCreated:()=>Promise<void>}) {
-  const [open,setOpen]=useState(false); const [error,setError]=useState("");
-  async function submit(e:FormEvent<HTMLFormElement>){e.preventDefault();const f=new FormData(e.currentTarget);try{await api("/admin/events",{method:"POST",body:JSON.stringify({code:f.get("code"),name:f.get("name"),status:f.get("status"),mode:f.get("mode"),currency:f.get("currency"),default_balance_minor:Math.round(Number(f.get("balance"))*100),qr_ttl_seconds:60,approval_required:f.get("approval")==="on",pending_payment_minutes:5})},csrf);setOpen(false);await onCreated()}catch(x){setError(x instanceof Error?x.message:"Could not create event.")}}
-  return <section className="mt-8"><button className="button" onClick={()=>setOpen(!open)}><CalendarPlus size={18}/> New event</button>{open&&<form onSubmit={submit} className="card mt-4 grid gap-4 p-5 md:grid-cols-3"><Field label="Event name"><input className="input" name="name" required/></Field><Field label="Event code"><input className="input" name="code" pattern="[A-Za-z0-9_-]{2,50}" required/></Field><Field label="State"><select className="input" name="status"><option value="draft">Draft</option><option value="active">Active</option></select></Field><Field label="Mode"><select className="input" name="mode"><option value="both">Money and coupons</option><option value="money">Money</option><option value="coupons">Coupons</option></select></Field><Field label="Currency"><input className="input" name="currency" defaultValue="EUR" maxLength={3}/></Field><Field label="Default balance"><input className="input" name="balance" type="number" min="0" step="0.01" defaultValue="50.00"/></Field><label className="flex items-center gap-2 text-sm font-semibold"><input name="approval" type="checkbox" defaultChecked/> Participant approves payments</label><div className="md:col-span-2 flex justify-end gap-2"><button type="button" className="button-secondary" onClick={()=>setOpen(false)}>Cancel</button><button className="button">Create event</button></div>{error&&<p className="text-sm text-red-700 md:col-span-3">{error}</p>}</form>}</section>;
+function Stat({ label, value, accent = false }: { label: string; value: string; accent?: boolean }) {
+  return (
+    <div className={`card p-5 ${accent ? "bg-leaf-600 text-black" : ""}`}>
+      <small className={accent ? "text-black/80" : "text-black/50"}>{label}</small>
+      <div className="mt-1 text-2xl font-semibold capitalize">{value}</div>
+    </div>
+  );
 }
-
-function EventWorkspace({event,csrf}:{event:Event;csrf:string}) {
-  const [tab,setTab]=useState("participants");
-  const tabs=[['participants','Participants',Users],['vendors','Vendors',WalletCards],['coupons','Coupons',Ticket],['actions','Automation',Clock3],['transactions','Ledger',Download]] as const;
-  return <section className="mt-8"><div className="card overflow-hidden"><div className="flex flex-col gap-4 border-b border-black/5 p-5 md:flex-row md:items-center md:justify-between"><div><div className="flex items-center gap-2"><h2 className="text-2xl font-bold">{event.name}</h2><span className="badge">{event.status}</span></div><p className="mt-1 text-sm text-black/50">{event.code} · {event.mode} · {event.currency}</p></div><div className="flex overflow-auto rounded-xl bg-canvas p-1">{tabs.map(([key,label,Icon])=><button key={key} onClick={()=>setTab(key)} className={`flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold ${tab===key?'bg-white shadow':'text-black/50'}`}><Icon size={16}/>{label}</button>)}</div></div><div className="p-5">{tab==='participants'&&<Participants event={event} csrf={csrf}/>} {tab==='vendors'&&<Vendors event={event} csrf={csrf}/>} {tab==='coupons'&&<Coupons event={event} csrf={csrf}/>} {tab==='actions'&&<Actions event={event} csrf={csrf}/>} {tab==='transactions'&&<Transactions event={event}/>}</div></div></section>;
-}
-
-function Participants({event,csrf}:{event:Event;csrf:string}) {
-  const [items,setItems]=useState<Participant[]>([]); const [notice,setNotice]=useState(""); const [error,setError]=useState("");
-  const load=useCallback(async()=>setItems((await api<{participants:Participant[]}>(`/admin/events/${event.id}/participants`)).participants),[event.id]); useEffect(()=>{void load()},[load]);
-  async function create(e:FormEvent<HTMLFormElement>){e.preventDefault();setError("");const f=new FormData(e.currentTarget);try{const result=await api<{wallet_link:string}>(`/admin/events/${event.id}/participants`,{method:'POST',body:JSON.stringify({participant_code:f.get('code'),name:f.get('name'),group:f.get('group')||null,email:f.get('email')||null})},csrf);setNotice(`Wallet link (shown once): ${result.wallet_link}`);e.currentTarget.reset();await load()}catch(x){setError(x instanceof Error?x.message:'Create failed.')}}
-  async function importCsv(file:File){const body=new FormData();body.append('file',file);try{const response=await api<Response>(`/admin/events/${event.id}/participants/import`,{method:'POST',body},csrf);const blob=await response.blob();const url=URL.createObjectURL(blob);const link=document.createElement('a');link.href=url;link.download=`${event.code}-wallet-links.csv`;link.click();URL.revokeObjectURL(url);await load()}catch(x){setError(x instanceof Error?x.message:'Import failed.')}}
-  return <div className="grid gap-6 lg:grid-cols-[320px_1fr]"><form onSubmit={create} className="rounded-2xl bg-canvas p-4"><h3 className="font-bold">Add participant</h3><Field label="Participant code"><input className="input" name="code" required/></Field><Field label="Name"><input className="input" name="name" required/></Field><Field label="Group"><input className="input" name="group"/></Field><Field label="Email"><input className="input" name="email" type="email"/></Field><button className="button mt-4 w-full"><Plus size={17}/> Create wallet</button><label className="button-secondary mt-2 w-full cursor-pointer"><Upload size={17}/> Import CSV<input className="hidden" type="file" accept=".csv,text/csv" onChange={(e)=>e.target.files?.[0]&&void importCsv(e.target.files[0])}/></label>{error&&<p className="mt-3 text-sm text-red-700">{error}</p>}</form><div>{notice&&<div className="mb-4 break-all rounded-xl bg-leaf-50 p-4 text-sm text-leaf-700">{notice}</div>}<div className="overflow-auto"><table className="w-full text-left text-sm"><thead className="text-black/45"><tr><th className="pb-3">Participant</th><th className="pb-3">Group</th><th className="pb-3">Balance</th><th className="pb-3">Access</th></tr></thead><tbody>{items.map(p=><tr key={p.id} className="border-t border-black/5"><td className="py-3"><strong>{p.name}</strong><div className="text-xs text-black/45">{p.participant_code}</div></td><td>{p.group||'—'}</td><td>{money(p.wallet.balance_minor-p.wallet.reserved_minor,event.currency)}</td><td><button className="text-sm font-semibold text-leaf-700" onClick={async()=>{const r=await api<{wallet_link:string}>(`/admin/events/${event.id}/participants/${p.id}/rotate-wallet-link`,{method:'POST'},csrf);setNotice(`Replacement link (shown once): ${r.wallet_link}`)}}>Rotate link</button></td></tr>)}</tbody></table>{!items.length&&<Empty text="No participants yet."/>}</div></div></div>;
-}
-
-function Vendors({event,csrf}:{event:Event;csrf:string}) {const [items,setItems]=useState<Vendor[]>([]);const [error,setError]=useState('');const load=useCallback(async()=>setItems((await api<{vendors:Vendor[]}>(`/admin/events/${event.id}/vendors`)).vendors),[event.id]);useEffect(()=>{void load()},[load]);async function submit(e:FormEvent<HTMLFormElement>){e.preventDefault();const f=new FormData(e.currentTarget);try{await api(`/admin/events/${event.id}/vendors`,{method:'POST',body:JSON.stringify({name:f.get('name'),pin:f.get('pin')})},csrf);e.currentTarget.reset();await load()}catch(x){setError(x instanceof Error?x.message:'Create failed.')}}return <div className="grid gap-6 lg:grid-cols-[320px_1fr]"><form onSubmit={submit} className="rounded-2xl bg-canvas p-4"><h3 className="font-bold">Add vendor</h3><Field label="Vendor name"><input className="input" name="name" required/></Field><Field label="Six-digit PIN"><input className="input" name="pin" inputMode="numeric" pattern="\d{6}" maxLength={6} required/></Field><button className="button mt-4 w-full">Create vendor</button>{error&&<p className="mt-3 text-sm text-red-700">{error}</p>}</form><div className="grid gap-3 sm:grid-cols-2">{items.map(v=><article className="rounded-xl border border-black/5 p-4" key={v.id}><div className="flex justify-between"><strong>{v.name}</strong><span className="badge">{v.active?'active':'disabled'}</span></div><p className="mt-2 text-xs text-black/45">Last login: {v.last_login_at?new Date(v.last_login_at).toLocaleString():'Never'}</p></article>)}{!items.length&&<Empty text="No vendors yet."/>}</div></div>}
-
-function Coupons({event,csrf}:{event:Event;csrf:string}) {const [items,setItems]=useState<Template[]>([]);const [vendors,setVendors]=useState<Vendor[]>([]);const load=useCallback(async()=>{const [t,v]=await Promise.all([api<{templates:Template[]}>(`/admin/events/${event.id}/coupon-templates`),api<{vendors:Vendor[]}>(`/admin/events/${event.id}/vendors`)]);setItems(t.templates);setVendors(v.vendors)},[event.id]);useEffect(()=>{void load()},[load]);if(event.mode==='money')return <Empty text="Coupons are not enabled for this event."/>;async function submit(e:FormEvent<HTMLFormElement>){e.preventDefault();const f=new FormData(e.currentTarget);await api(`/admin/events/${event.id}/coupon-templates`,{method:'POST',body:JSON.stringify({name:f.get('name'),vendor_id:f.get('vendor')?Number(f.get('vendor')):null,sort_order:items.length+1})},csrf);e.currentTarget.reset();await load()}return <div><form onSubmit={submit} className="flex flex-col gap-3 rounded-2xl bg-canvas p-4 md:flex-row md:items-end"><Field label="Coupon name"><input className="input" name="name" required/></Field><Field label="Vendor restriction"><select className="input" name="vendor"><option value="">Universal</option>{vendors.map(v=><option value={v.id} key={v.id}>{v.name}</option>)}</select></Field><button className="button">Add template</button><button type="button" className="button-secondary" onClick={async()=>{await api(`/admin/events/${event.id}/coupons/issue`,{method:'POST'},csrf);alert('Missing coupons issued.')}}>Issue missing</button></form><div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">{items.map(t=><article className="rounded-xl border border-black/5 p-4" key={t.id}><Ticket className="text-leaf-600"/><strong className="mt-3 block">{t.name}</strong><p className="text-sm text-black/45">{t.vendor_id?vendors.find(v=>v.id===t.vendor_id)?.name:'Any vendor'}</p></article>)}</div></div>}
-
-function Transactions({event}:{event:Event}){const [items,setItems]=useState<Transaction[]>([]);useEffect(()=>{void api<{transactions:Transaction[]}>(`/admin/events/${event.id}/transactions`).then(r=>setItems(r.transactions))},[event.id]);return <div><div className="mb-4 flex gap-2"><a className="button-secondary" href={`/api/v1/admin/events/${event.id}/transactions/export.csv`}><Download size={16}/> CSV</a><a className="button-secondary" href={`/api/v1/admin/events/${event.id}/transactions/export.xlsx`}><Download size={16}/> Excel</a></div><div className="overflow-auto"><table className="w-full text-left text-sm"><thead className="text-black/45"><tr><th className="pb-3">Reference</th><th>Participant</th><th>Status</th><th>Amount</th><th>Date</th></tr></thead><tbody>{items.map(t=><tr className="border-t border-black/5" key={t.id}><td className="py-3 font-mono text-xs">{t.reference}</td><td>{t.participant_name}<div className="text-xs text-black/40">{t.vendor_name||'Administrator'}</div></td><td><span className="badge">{t.status}</span></td><td>{money(t.amount_minor,event.currency)}</td><td>{new Date(t.created_at).toLocaleString()}</td></tr>)}</tbody></table>{!items.length&&<Empty text="No transactions yet."/>}</div></div>}
-
-function Actions({event,csrf}:{event:Event;csrf:string}){const [items,setItems]=useState<ScheduledAction[]>([]);const load=useCallback(async()=>setItems((await api<{actions:ScheduledAction[]}>(`/admin/events/${event.id}/actions`)).actions),[event.id]);useEffect(()=>{void load()},[load]);async function submit(e:FormEvent<HTMLFormElement>){e.preventDefault();const f=new FormData(e.currentTarget);const executeAt=new Date(String(f.get('execute_at'))).toISOString();await api(`/admin/events/${event.id}/actions`,{method:'POST',body:JSON.stringify({name:f.get('name'),action_type:f.get('action_type'),schedule_type:f.get('schedule_type'),execute_at:executeAt,auto_delete:f.get('auto_delete')==='on',excluded_wallet_ids:[]})},csrf);e.currentTarget.reset();await load()}return <div className="grid gap-6 lg:grid-cols-[360px_1fr]"><form onSubmit={submit} className="rounded-2xl bg-canvas p-4"><h3 className="font-bold">Schedule action</h3><Field label="Name"><input className="input" name="name" required/></Field><Field label="Action"><select className="input" name="action_type"><option value="activate_wallets">Activate wallets</option><option value="deactivate_wallets">Disable wallets</option><option value="issue_coupons">Issue missing coupons</option><option value="refill_coupons">Refill redeemed coupons</option><option value="disable_coupons">Disable coupons</option><option value="enable_coupons">Enable coupons</option><option value="delete_wallets">Delete empty wallets</option></select></Field><Field label="Frequency"><select className="input" name="schedule_type"><option value="once">Once</option><option value="daily">Daily</option></select></Field><Field label="First execution"><input className="input" name="execute_at" type="datetime-local" required/></Field><label className="mt-3 flex items-center gap-2 text-sm"><input type="checkbox" name="auto_delete"/> Remove schedule after completion</label><button className="button mt-4 w-full">Create schedule</button></form><div className="space-y-3">{items.map(a=><article className="flex flex-col justify-between gap-3 rounded-xl border border-black/5 p-4 sm:flex-row sm:items-center" key={a.id}><div><strong>{a.name}</strong><p className="text-sm text-black/45">{a.action_type} · {a.schedule_type} · {new Date(a.execute_at).toLocaleString()}</p></div><button className="button-secondary min-h-9" onClick={async()=>{await api(`/admin/events/${event.id}/actions/${a.id}/run`,{method:'POST'},csrf);await load()}}>Run now</button></article>)}{!items.length&&<Empty text="No scheduled actions yet."/>}</div></div>}
-
-function Field({label,children}:{label:string;children:React.ReactNode}){return <label className="mt-3 block flex-1 first:mt-0"><span className="label">{label}</span>{children}</label>}
-function Empty({text}:{text:string}){return <div className="col-span-full rounded-xl border border-dashed border-black/15 p-8 text-center text-sm text-black/45">{text}</div>}

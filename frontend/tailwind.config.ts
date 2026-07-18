@@ -5,13 +5,12 @@ export default {
   theme: {
     extend: {
       colors: {
-        ink: "#15201c",
-        canvas: "#f3f6f2",
-        leaf: { 50: "#effaf3", 500: "#2f8f5b", 600: "#237448", 700: "#1a5b38" },
+        ink: "#212529",
+        canvas: "#f4f6f3",
+        leaf: { 50: "#eef8e8", 500: "#62b91a", 600: "#4fa800", 700: "#3d8500" },
       },
-      boxShadow: { soft: "0 14px 45px rgba(21, 32, 28, 0.09)" },
+      boxShadow: { soft: "0 .25rem .9rem rgba(33, 37, 41, 0.09)" },
     },
   },
   plugins: [],
 } satisfies Config;
-

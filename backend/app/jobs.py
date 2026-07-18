@@ -17,16 +17,20 @@ def run_due() -> dict[str, int]:
             expired = expire_pending_payments(db)
             action_ids = list(
                 db.scalars(
-                    select(ScheduledAction.id).where(
+                    select(ScheduledAction.id)
+                    .where(
                         ScheduledAction.enabled.is_(True),
                         ScheduledAction.completed_at.is_(None),
                         ScheduledAction.execute_at <= utcnow(),
-                    ).order_by(ScheduledAction.execute_at, ScheduledAction.id)
+                    )
+                    .order_by(ScheduledAction.execute_at, ScheduledAction.id)
                 )
             )
             executed = 0
             for action_id in action_ids:
-                action = db.scalar(select(ScheduledAction).where(ScheduledAction.id == action_id).with_for_update())
+                action = db.scalar(
+                    select(ScheduledAction).where(ScheduledAction.id == action_id).with_for_update()
+                )
                 if action and action.enabled and action.execute_at <= utcnow():
                     execute_action(db, action, "scheduled", "system:scheduler")
                     executed += 1
@@ -50,4 +54,3 @@ if __name__ == "__main__":
         loop()
     else:
         print(run_due())
-
