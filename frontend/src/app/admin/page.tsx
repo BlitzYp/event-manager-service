@@ -9,6 +9,7 @@ import { Brand } from "@/components/Shell";
 import { ApiFailure, api, money } from "@/lib/api";
 
 export default function AdminPage() {
+  const [authChecked, setAuthChecked] = useState(false);
   const [user, setUser] = useState<{ email: string } | null>(null);
   const [csrf, setCsrf] = useState("");
   const [error, setError] = useState("");
@@ -30,6 +31,11 @@ export default function AdminPage() {
       );
     } catch {
       setUser(null);
+      setCsrf("");
+      setEvents([]);
+      setEventId(undefined);
+    } finally {
+      setAuthChecked(true);
     }
   }, []);
 
@@ -55,6 +61,17 @@ export default function AdminPage() {
     } catch (failure) {
       setError(failure instanceof ApiFailure ? failure.message : "Sign in failed.");
     }
+  }
+
+  if (!authChecked) {
+    return (
+      <main className="grid min-h-screen place-items-center bg-[#e9ecef]" aria-live="polite">
+        <div className="flex items-center gap-3 text-sm font-medium text-black/55">
+          <RefreshCw className="animate-spin" size={20} aria-hidden="true" />
+          Checking administrator session…
+        </div>
+      </main>
+    );
   }
 
   if (!user) {

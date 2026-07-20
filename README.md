@@ -189,3 +189,44 @@ The OpenAPI document is available at `/api/openapi.json`; generate frontend type
 - Do not expose MySQL publicly; the published port is intended only for local development.
 - Back up MySQL, test restores, retain audit records, and monitor API/scheduler health and failed vendor logins.
 - Run `alembic upgrade head` before each API rollout. The Compose API command does this automatically.
+
+### Oracle Cloud VM deployment
+
+The repository includes `docker-compose.oracle.yml` for a single Oracle Cloud VM. It runs
+Caddy as the only public service, keeps the API and MySQL on private Docker networks, runs
+Alembic as a one-shot migration service, and persists MySQL and Caddy certificate data in
+named volumes.
+
+On the VM, clone the repository and create the production environment file:
+
+```bash
+cp .env.oracle.example .env.oracle
+chmod 600 .env.oracle
+```
+
+Replace every placeholder in `.env.oracle`. Point the domain's DNS A record at the VM's
+public IP, and allow inbound TCP ports 80 and 443 plus UDP port 443 in both the Oracle Cloud
+network security rules and the VM firewall. Do not open ports 3000, 8000, 3306, or 3307.
+For a temporary test without a domain, set `CADDY_ADDRESS=http://PUBLIC_IP`, set
+`PUBLIC_APP_URL` to the same URL, and set `COOKIE_SECURE=false`. Switch to a domain and HTTPS
+before using real participant or vendor credentials.
+
+Build and start the production stack:
+
+```bash
+docker compose --env-file .env.oracle -f docker-compose.oracle.yml up --build -d
+docker compose --env-file .env.oracle -f docker-compose.oracle.yml ps
+curl --fail-with-body https://events.example.com/health/api
+```
+
+Create the initial administrator interactively:
+
+```bash
+docker compose --env-file .env.oracle -f docker-compose.oracle.yml run --rm api \
+  python -m app.cli create-admin
+```
+
+For subsequent deployments, pull the desired revision and repeat the `up --build -d`
+command. The migration service must finish successfully before the API, scheduler, and web
+services start. Back up MySQL separately and regularly; the `mysql-data` volume is persistent
+but is not a backup.

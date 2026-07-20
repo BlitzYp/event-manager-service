@@ -1,0 +1,156 @@
+name: event-manager-production
+
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "5"
+
+x-backend: &backend
+  build:
+    context: ./backend
+  environment:
+    DATABASE_URL: ${DATABASE_URL:?Set DATABASE_URL in .env.oracle}
+    APP_SECRET_KEY: ${APP_SECRET_KEY:?Set APP_SECRET_KEY in .env.oracle}
+    PUBLIC_APP_URL: ${PUBLIC_APP_URL:?Set PUBLIC_APP_URL in .env.oracle}
+    COOKIE_SECURE: ${COOKIE_SECURE:-true}
+    ADMIN_SESSION_HOURS: ${ADMIN_SESSION_HOURS:-12}
+    VENDOR_SESSION_IDLE_MINUTES: ${VENDOR_SESSION_IDLE_MINUTES:-30}
+    PENDING_PAYMENT_MINUTES: ${PENDING_PAYMENT_MINUTES:-5}
+    ADMIN_WALLET_PREVIEW_MINUTES: ${ADMIN_WALLET_PREVIEW_MINUTES:-5}
+  logging: *default-logging
+  networks:
+    - database
+
+services:
+  mysql:
+    image: mysql:8.4
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: ${MYSQL_DATABASE:?Set MYSQL_DATABASE in .env.oracle}
+      MYSQL_USER: ${MYSQL_USER:?Set MYSQL_USER in .env.oracle}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:?Set MYSQL_PASSWORD in .env.oracle}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?Set MYSQL_ROOT_PASSWORD in .env.oracle}
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+    volumes:
+      - mysql-data:/var/lib/mysql
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - mysqladmin ping -h 127.0.0.1 -u root -p$$MYSQL_ROOT_PASSWORD --silent
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
+    logging: *default-logging
+    networks:
+      - database
+
+  migrate:
+    <<: *backend
+    restart: "no"
+    command: ["alembic", "upgrade", "head"]
+    depends_on:
+      mysql:
+        condition: service_healthy
+
+  api:
+    <<: *backend
+    restart: unless-stopped
+    command:
+      - uvicorn
+      - app.main:app
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8000"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - import urllib.request; urllib.request.urlopen('http://localhost:8000/health')
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    networks:
+      - application
+      - database
+
+  scheduler:
+    <<: *backend
+    restart: unless-stopped
+    command: ["python", "-m", "app.jobs", "loop"]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+  web:
+    build:
+      context: ./frontend
+      args:
+        API_INTERNAL_URL: http://api:8000
+        NEXT_PUBLIC_API_BASE: /api/v1
+    restart: unless-stopped
+    environment:
+      API_INTERNAL_URL: http://api:8000
+      NEXT_PUBLIC_API_BASE: /api/v1
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - fetch('http://localhost:3000/health/api').then(r => { if (!r.ok) process.exit(1) }).catch(() => process.exit(1))
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    logging: *default-logging
+    networks:
+      - edge
+      - application
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    command:
+      - caddy
+      - reverse-proxy
+      - --from
+      - ${CADDY_ADDRESS:?Set CADDY_ADDRESS in .env.oracle}
+      - --to
+      - web:3000
+    depends_on:
+      web:
+        condition: service_healthy
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - caddy-data:/data
+      - caddy-config:/config
+    logging: *default-logging
+    networks:
+      - edge
+
+volumes:
+  mysql-data:
+  caddy-data:
+  caddy-config:
+
+networks:
+  edge:
+  application:
+    internal: true
+  database:
+    internal: true
