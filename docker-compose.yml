@@ -65,7 +65,11 @@ services:
     command: ["python", "-m", "app.jobs", "loop"]
 
   web:
-    build: ./frontend
+    build:
+      context: ./frontend
+      args:
+        API_INTERNAL_URL: http://api:8000
+        NEXT_PUBLIC_API_BASE: /api/v1
     restart: unless-stopped
     environment:
       API_INTERNAL_URL: http://api:8000
