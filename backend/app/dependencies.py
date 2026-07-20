@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 from .config import settings
 from .database import get_db, utcnow
 from .errors import ApiError
-from .models import AdminSession, AdminUser, Event, Vendor, VendorSession
+from .models import AdminSession, AdminUser, Event, EventStatus, Vendor, VendorSession
 from .security import safe_equal_hash, token_hash
 
 
@@ -96,7 +96,11 @@ def require_vendor(
         )
         .with_for_update()
     )
-    if not session or not session.vendor.active:
+    if (
+        not session
+        or not session.vendor.active
+        or session.vendor.event.status != EventStatus.active
+    ):
         raise ApiError(401, "authentication_required", "Authentication required.")
     session.last_activity_at = utcnow()
     db.commit()

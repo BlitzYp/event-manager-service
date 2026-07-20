@@ -1,9 +1,12 @@
 from datetime import timedelta
 from uuid import uuid4
 
+import pytest
 from sqlalchemy import select
 
 from app.database import SessionLocal, utcnow
+from app.dependencies import require_vendor
+from app.errors import ApiError
 from app.models import (
     ActionType,
     AdminUser,
@@ -16,6 +19,8 @@ from app.models import (
     Participant,
     ScheduledAction,
     ScheduleType,
+    Vendor,
+    VendorSession,
     Wallet,
 )
 from app.routers.admin import (
@@ -25,7 +30,83 @@ from app.routers.admin import (
     update_event,
 )
 from app.schemas import ActionWalletScope, EventUpdate
+from app.security import token_hash
 from app.services import create_participant_with_wallet, issue_coupons
+
+
+def test_archiving_event_revokes_and_rejects_vendor_sessions() -> None:
+    db = SessionLocal()
+    event_id: int | None = None
+    try:
+        suffix = uuid4().hex[:10]
+        event = Event(
+            code=f"archive-{suffix}",
+            name="Archived vendor event",
+            status=EventStatus.active,
+            mode=EventMode.money,
+            currency="EUR",
+            default_balance_minor=0,
+        )
+        db.add(event)
+        db.flush()
+        event_id = event.id
+        vendor = Vendor(
+            event_id=event.id,
+            name="Test vendor",
+            pin_lookup=f"lookup-{suffix}",
+            pin_hash="unused",
+            active=True,
+        )
+        db.add(vendor)
+        db.flush()
+        raw_session = f"vendor-session-{suffix}"
+        session = VendorSession(
+            vendor_id=vendor.id,
+            token_hash=token_hash(raw_session),
+            csrf_hash=token_hash("csrf"),
+        )
+        db.add(session)
+        db.commit()
+
+        update_event(
+            event.id,
+            EventUpdate(
+                code=event.code,
+                name=event.name,
+                status=EventStatus.archived,
+                mode=event.mode,
+                currency=event.currency,
+                default_balance_minor=event.default_balance_minor,
+                qr_ttl_seconds=event.qr_ttl_seconds,
+                approval_required=event.approval_required,
+                pending_payment_minutes=event.pending_payment_minutes,
+            ),
+            AdminUser(id=999_999, email="test@example.invalid", password_hash="unused"),
+            db,
+        )
+        db.refresh(session)
+        assert session.revoked_at is not None
+
+        replacement_raw = f"replacement-session-{suffix}"
+        db.add(
+            VendorSession(
+                vendor_id=vendor.id,
+                token_hash=token_hash(replacement_raw),
+                csrf_hash=token_hash("replacement-csrf"),
+            )
+        )
+        db.commit()
+        with pytest.raises(ApiError) as error:
+            require_vendor(db, replacement_raw)
+        assert error.value.code == "authentication_required"
+    finally:
+        db.rollback()
+        if event_id is not None:
+            event = db.get(Event, event_id)
+            if event:
+                db.delete(event)
+                db.commit()
+        db.close()
 
 
 def test_multiple_events_can_be_active_at_the_same_time() -> None:

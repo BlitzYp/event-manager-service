@@ -124,6 +124,7 @@ export default function VendorWalletPage() {
     <VendorConsole
       vendor={vendor}
       csrf={csrf}
+      onSessionExpired={() => setVendor(null)}
       onLogout={async () => {
         await api("/vendor/logout", { method: "POST" }, csrf);
         setVendor(null);
@@ -136,10 +137,12 @@ function VendorConsole({
   vendor,
   csrf,
   onLogout,
+  onSessionExpired,
 }: {
   vendor: Vendor;
   csrf: string;
   onLogout: () => Promise<void>;
+  onSessionExpired: () => void;
 }) {
   const [step, setStep] = useState<
     "start" | "scan" | "wallet" | "coupon" | "result"
@@ -151,6 +154,17 @@ function VendorConsole({
   const [error, setError] = useState("");
   const video = useRef<HTMLVideoElement>(null);
   const controls = useRef<IScannerControls | undefined>(undefined);
+  useEffect(() => {
+    const interval = window.setInterval(async () => {
+      try {
+        await api("/vendor/me");
+      } catch {
+        controls.current?.stop();
+        onSessionExpired();
+      }
+    }, 10_000);
+    return () => window.clearInterval(interval);
+  }, [onSessionExpired]);
   const lookup = useCallback(async (value: string, isCode = false) => {
     setError("");
     try {
@@ -171,10 +185,14 @@ function VendorConsole({
         setStep("wallet");
       }
     } catch (x) {
+      if (x instanceof ApiFailure && x.status === 401) {
+        onSessionExpired();
+        return;
+      }
       setError(x instanceof Error ? x.message : "Nothing was found.");
       setStep("start");
     }
-  }, []);
+  }, [onSessionExpired]);
   const lookupCouponCode = useCallback(async (value: string) => {
     setError("");
     try {
@@ -184,10 +202,14 @@ function VendorConsole({
       setCoupon(result.coupon);
       setStep("coupon");
     } catch (x) {
+      if (x instanceof ApiFailure && x.status === 401) {
+        onSessionExpired();
+        return;
+      }
       setError(x instanceof Error ? x.message : "Coupon was not found.");
       setStep("start");
     }
-  }, []);
+  }, [onSessionExpired]);
   async function startScanner() {
     setError("");
     setStep("scan");
@@ -239,6 +261,10 @@ function VendorConsole({
       );
       setStep("result");
     } catch (x) {
+      if (x instanceof ApiFailure && x.status === 401) {
+        onSessionExpired();
+        return;
+      }
       setError(x instanceof Error ? x.message : "Payment failed.");
     }
   }
@@ -256,6 +282,10 @@ function VendorConsole({
       setMessage(`Coupon redeemed. Reference ${r.redemption.reference}.`);
       setStep("result");
     } catch (x) {
+      if (x instanceof ApiFailure && x.status === 401) {
+        onSessionExpired();
+        return;
+      }
       setError(x instanceof Error ? x.message : "Redemption failed.");
     }
   }

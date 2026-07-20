@@ -23,6 +23,7 @@ from ..models import (
     CouponStatus,
     CouponTemplate,
     Event,
+    EventStatus,
     MoneyTransaction,
     Participant,
     PaymentQrGrant,
@@ -221,6 +222,15 @@ def update_event(
     event = get_event(db, event_id, lock=True)
     for key, value in payload.model_dump().items():
         setattr(event, key, value)
+    if event.status != EventStatus.active:
+        vendor_ids = select(Vendor.id).where(Vendor.event_id == event.id)
+        for session in db.scalars(
+            select(VendorSession).where(
+                VendorSession.vendor_id.in_(vendor_ids),
+                VendorSession.revoked_at.is_(None),
+            )
+        ):
+            session.revoked_at = utcnow()
     db.commit()
     return {"event": event_json(event)}
 
