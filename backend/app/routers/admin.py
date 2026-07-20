@@ -19,6 +19,7 @@ from ..models import (
     AdminUser,
     CouponAudit,
     CouponInstance,
+    CouponStatus,
     CouponTemplate,
     Event,
     MoneyTransaction,
@@ -37,6 +38,7 @@ from ..schemas import (
     ActionCreate,
     ActionWalletScope,
     AdjustmentRequest,
+    CouponIssueRequest,
     CouponTemplateCreate,
     EventCreate,
     EventUpdate,
@@ -132,7 +134,7 @@ def list_participants(
     _: AdminUser = Depends(require_admin),
     db: Session = Depends(get_db),
 ) -> dict:
-    get_event(db, event_id)
+    event = get_event(db, event_id)
     query = select(Participant).join(Wallet).where(Participant.event_id == event_id)
     if search:
         term = f"%{search}%"
@@ -156,6 +158,21 @@ def list_participants(
             .order_by(Participant.group_name)
         )
     )
+    coupon_counts: dict[int, dict[str, int]] = {}
+    if event_supports(event, "coupons"):
+        for wallet_id, status, count in db.execute(
+            select(CouponInstance.wallet_id, CouponInstance.status, func.count(CouponInstance.id))
+            .where(
+                CouponInstance.event_id == event_id,
+                CouponInstance.status != CouponStatus.removed,
+            )
+            .group_by(CouponInstance.wallet_id, CouponInstance.status)
+        ):
+            summary = coupon_counts.setdefault(
+                wallet_id, {"available": 0, "disabled": 0, "redeemed": 0, "total": 0}
+            )
+            summary[status.value] = count
+            summary["total"] += count
     return {
         "groups": groups,
         "participants": [
@@ -171,6 +188,10 @@ def list_participants(
                     "enabled": p.wallet.enabled,
                     "reserved_minor": reserved_minor(db, p.wallet.id),
                 },
+                "coupons": coupon_counts.get(
+                    p.wallet.id,
+                    {"available": 0, "disabled": 0, "redeemed": 0, "total": 0},
+                ),
             }
             for p in rows
         ],
@@ -631,12 +652,30 @@ def create_coupon_template(
 
 @router.post("/events/{event_id}/coupons/issue")
 def issue_event_coupons(
-    event_id: int, admin: AdminUser = Depends(require_admin_csrf), db: Session = Depends(get_db)
+    event_id: int,
+    payload: CouponIssueRequest,
+    admin: AdminUser = Depends(require_admin_csrf),
+    db: Session = Depends(get_db),
 ) -> dict:
     event = get_event(db, event_id)
     if not event_supports(event, "coupons"):
         raise ApiError(409, "coupons_not_enabled", "Coupons are not enabled for this event.")
-    count = issue_coupons(db, event_id, None, f"admin:{admin.id}")
+    template_count = db.scalar(
+        select(func.count(CouponTemplate.id)).where(
+            CouponTemplate.event_id == event_id,
+            CouponTemplate.id.in_(payload.template_ids),
+            CouponTemplate.active.is_(True),
+        )
+    )
+    if template_count != len(set(payload.template_ids)):
+        raise ApiError(422, "invalid_coupon_templates", "Select active coupons from this event.")
+    count = issue_coupons(
+        db,
+        event_id,
+        None,
+        f"admin:{admin.id}",
+        template_ids=payload.template_ids,
+    )
     db.commit()
     return {"issued": count}
 
@@ -723,15 +762,36 @@ def transaction_query(
 
 @router.get("/events/{event_id}/coupon-audits")
 def coupon_audits(
-    event_id: int, _: AdminUser = Depends(require_admin), db: Session = Depends(get_db)
+    event_id: int,
+    vendor_id: int | None = None,
+    date_from: date | None = None,
+    date_to: date | None = None,
+    search: str = "",
+    _: AdminUser = Depends(require_admin),
+    db: Session = Depends(get_db),
 ) -> dict:
     get_event(db, event_id)
-    rows = db.scalars(
-        select(CouponAudit)
-        .where(CouponAudit.event_id == event_id)
-        .order_by(CouponAudit.created_at.desc())
-        .limit(500)
-    )
+    query = select(CouponAudit).where(CouponAudit.event_id == event_id)
+    if vendor_id:
+        query = query.where(CouponAudit.vendor_id == vendor_id)
+    if date_from:
+        query = query.where(CouponAudit.created_at >= datetime.combine(date_from, time.min))
+    if date_to:
+        query = query.where(
+            CouponAudit.created_at < datetime.combine(date_to + timedelta(days=1), time.min)
+        )
+    if search:
+        term = f"%{search}%"
+        query = query.where(
+            or_(
+                CouponAudit.participant_name.like(term),
+                CouponAudit.participant_code.like(term),
+                CouponAudit.reference.like(term),
+                CouponAudit.coupon_name.like(term),
+                CouponAudit.vendor_name.like(term),
+            )
+        )
+    rows = db.scalars(query.order_by(CouponAudit.created_at.desc()).limit(500))
     return {
         "audits": [
             {
@@ -739,7 +799,9 @@ def coupon_audits(
                 "reference": r.reference,
                 "action": r.action,
                 "coupon_name": r.coupon_name,
+                "participant_code": r.participant_code,
                 "participant_name": r.participant_name,
+                "vendor_id": r.vendor_id,
                 "vendor_name": r.vendor_name,
                 "actor": r.actor,
                 "created_at": r.created_at,

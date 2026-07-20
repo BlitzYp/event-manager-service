@@ -1,10 +1,15 @@
 from datetime import timedelta
 from uuid import uuid4
 
+from sqlalchemy import select
+
 from app.database import SessionLocal, utcnow
 from app.models import (
     ActionType,
     AdminUser,
+    CouponInstance,
+    CouponStatus,
+    CouponTemplate,
     Event,
     EventMode,
     EventStatus,
@@ -13,9 +18,9 @@ from app.models import (
     ScheduleType,
     Wallet,
 )
-from app.routers.admin import apply_action_wallet_scope, delete_participant
+from app.routers.admin import apply_action_wallet_scope, delete_participant, list_participants
 from app.schemas import ActionWalletScope
-from app.services import create_participant_with_wallet
+from app.services import create_participant_with_wallet, issue_coupons
 
 
 def test_participant_delete_and_scoped_action_execution() -> None:
@@ -81,4 +86,52 @@ def test_participant_delete_and_scoped_action_execution() -> None:
             if event:
                 db.delete(event)
                 db.commit()
+        db.close()
+
+
+def test_selected_coupon_issuance_and_participant_summary() -> None:
+    db = SessionLocal()
+    try:
+        suffix = uuid4().hex[:10]
+        event = Event(
+            code=f"coupon-{suffix}",
+            name="Selected coupon test",
+            status=EventStatus.active,
+            mode=EventMode.coupons,
+            currency="EUR",
+            default_balance_minor=0,
+        )
+        db.add(event)
+        db.flush()
+        _, wallet, _ = create_participant_with_wallet(
+            db, event, "C-1", "Coupon participant", "Group C", None
+        )
+        selected = CouponTemplate(event_id=event.id, name="Lunch", sort_order=1, active=True)
+        unselected = CouponTemplate(event_id=event.id, name="Drink", sort_order=2, active=True)
+        db.add_all([selected, unselected])
+        db.flush()
+
+        assert issue_coupons(
+            db, event.id, None, "test", template_ids=[selected.id]
+        ) == 1
+        assert issue_coupons(
+            db, event.id, None, "test", template_ids=[selected.id]
+        ) == 0
+        coupons = list(
+            db.scalars(select(CouponInstance).where(CouponInstance.wallet_id == wallet.id))
+        )
+        assert [(coupon.template_id, coupon.status) for coupon in coupons] == [
+            (selected.id, CouponStatus.available)
+        ]
+
+        admin = AdminUser(id=999_999, email="test@example.invalid", password_hash="unused")
+        result = list_participants(event.id, "", "", None, admin, db)
+        assert result["participants"][0]["coupons"] == {
+            "available": 1,
+            "disabled": 0,
+            "redeemed": 0,
+            "total": 1,
+        }
+    finally:
+        db.rollback()
         db.close()

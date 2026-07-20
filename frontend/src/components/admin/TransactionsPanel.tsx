@@ -5,7 +5,7 @@ import { Download, Filter, RotateCcw } from "lucide-react";
 import { api, money } from "@/lib/api";
 import { Empty } from "./AdminUi";
 import { StatusBadge } from "./StatusBadge";
-import type { Event, Transaction, Vendor } from "./types";
+import type { CouponTransaction, Event, Transaction, Vendor } from "./types";
 
 type TransactionFilters = {
   search: string;
@@ -26,7 +26,7 @@ const emptyFilters: TransactionFilters = {
 };
 
 export function TransactionsPanel({ event }: { event: Event }) {
-  const [items, setItems] = useState<Transaction[]>([]);
+  const [items, setItems] = useState<(Transaction | CouponTransaction)[]>([]);
   const [vendors, setVendors] = useState<Vendor[]>([]);
   const [draftFilters, setDraftFilters] = useState(emptyFilters);
   const [appliedFilters, setAppliedFilters] = useState(emptyFilters);
@@ -44,18 +44,35 @@ export function TransactionsPanel({ event }: { event: Event }) {
     setError("");
     try {
       const query = queryString(appliedFilters);
-      const [transactions, vendorResult] = await Promise.all([
-        api<{ transactions: Transaction[] }>(
-          `/admin/events/${event.id}/transactions${query ? `?${query}` : ""}`,
-        ),
+      const includeMoney = appliedFilters.type !== "coupon";
+      const includeCoupons = event.mode !== "money" && !appliedFilters.status && (!appliedFilters.type || appliedFilters.type === "coupon");
+      const couponQuery = queryString({
+        ...appliedFilters,
+        status: "",
+        type: "",
+      });
+      const [transactions, couponAudits, vendorResult] = await Promise.all([
+        includeMoney
+          ? api<{ transactions: Omit<Transaction, "kind">[] }>(
+              `/admin/events/${event.id}/transactions${query ? `?${query}` : ""}`,
+            )
+          : Promise.resolve({ transactions: [] }),
+        includeCoupons
+          ? api<{ audits: Omit<CouponTransaction, "kind">[] }>(
+              `/admin/events/${event.id}/coupon-audits${couponQuery ? `?${couponQuery}` : ""}`,
+            )
+          : Promise.resolve({ audits: [] }),
         api<{ vendors: Vendor[] }>(`/admin/events/${event.id}/vendors`),
       ]);
-      setItems(transactions.transactions);
+      setItems([
+        ...transactions.transactions.map((transaction) => ({ ...transaction, kind: "money" as const })),
+        ...couponAudits.audits.map((transaction) => ({ ...transaction, kind: "coupon" as const })),
+      ].sort((left, right) => Date.parse(right.created_at) - Date.parse(left.created_at)));
       setVendors(vendorResult.vendors);
     } catch (failure) {
       setError(failure instanceof Error ? failure.message : "Could not load transactions.");
     }
-  }, [appliedFilters, event.id, queryString]);
+  }, [appliedFilters, event.id, event.mode, queryString]);
 
   useEffect(() => {
     void load();
@@ -109,6 +126,7 @@ export function TransactionsPanel({ event }: { event: Event }) {
           <option value="admin_debit">Admin debit</option>
           <option value="vendor_debit">Vendor payment</option>
           <option value="reversal">Reversal</option>
+          {event.mode !== "money" && <option value="coupon">Coupon activity</option>}
         </select>
         <select className="input" aria-label="Vendor" value={draftFilters.vendor_id} onChange={(changeEvent) => setDraftFilters({ ...draftFilters, vendor_id: changeEvent.target.value })}>
           <option value="">All vendors</option>
@@ -128,14 +146,16 @@ export function TransactionsPanel({ event }: { event: Event }) {
             <RotateCcw size={17} />
           </button>
         </div>
-        <div className="flex flex-wrap gap-2 md:col-span-2 xl:col-span-6 xl:justify-end">
-          <a className="button-secondary" href={`/api/v1/admin/events/${event.id}/transactions/export.csv${exportSuffix}`}>
-            <Download size={16} /> CSV
-          </a>
-          <a className="button-secondary" href={`/api/v1/admin/events/${event.id}/transactions/export.xlsx${exportSuffix}`}>
-            <Download size={16} /> Excel
-          </a>
-        </div>
+        {appliedFilters.type !== "coupon" && (
+          <div className="flex flex-wrap gap-2 md:col-span-2 xl:col-span-6 xl:justify-end">
+            <a className="button-secondary" href={`/api/v1/admin/events/${event.id}/transactions/export.csv${exportSuffix}`}>
+              <Download size={16} /> {event.mode === "money" ? "CSV" : "Money CSV"}
+            </a>
+            <a className="button-secondary" href={`/api/v1/admin/events/${event.id}/transactions/export.xlsx${exportSuffix}`}>
+              <Download size={16} /> {event.mode === "money" ? "Excel" : "Money Excel"}
+            </a>
+          </div>
+        )}
       </form>
 
       {error && <div className="alert-error mb-4 text-sm">{error}</div>}
@@ -148,28 +168,41 @@ export function TransactionsPanel({ event }: { event: Event }) {
               <th>Vendor</th>
               <th>Type</th>
               <th>Status</th>
-              <th>Amount</th>
+              <th>Amount / coupon</th>
             </tr>
           </thead>
           <tbody>
             {items.map((transaction) => {
-              const debit = transaction.type === "vendor_debit" || transaction.type === "admin_debit";
+              const debit = transaction.kind === "money" && (transaction.type === "vendor_debit" || transaction.type === "admin_debit");
               return (
-                <tr key={transaction.id}>
+                <tr key={`${transaction.kind}-${transaction.id}`}>
                   <td>
                     {new Date(transaction.created_at).toLocaleString()}
                     <div className="font-mono text-xs text-black/40">{transaction.reference}</div>
                   </td>
                   <td>
                     <strong>{transaction.participant_name}</strong>
-                    <div className="text-xs text-black/40">{transaction.participant_code} · {transaction.group || "—"}</div>
+                    <div className="text-xs text-black/40">
+                      {transaction.participant_code}{transaction.kind === "money" ? ` · ${transaction.group || "—"}` : ""}
+                    </div>
                   </td>
                   <td>{transaction.vendor_name || "Administrator"}</td>
-                  <td className="capitalize">{transaction.type.replaceAll("_", " ")}</td>
-                  <td><StatusBadge status={transaction.status} /></td>
-                  <td className={debit ? "font-semibold text-red-700" : "font-semibold text-emerald-700"}>
-                    {debit ? "−" : "+"}{money(transaction.amount_minor, event.currency)}
+                  <td className="capitalize">
+                    {transaction.kind === "money" ? transaction.type.replaceAll("_", " ") : `Coupon ${transaction.action}`}
                   </td>
+                  <td>
+                    <StatusBadge status={transaction.kind === "money" ? transaction.status : couponStatus(transaction.action)} />
+                  </td>
+                  {transaction.kind === "money" ? (
+                    <td className={debit ? "font-semibold text-red-700" : "font-semibold text-emerald-700"}>
+                      {debit ? "−" : "+"}{money(transaction.amount_minor, event.currency)}
+                    </td>
+                  ) : (
+                    <td>
+                      <strong>{transaction.coupon_name}</strong>
+                      <div className="text-xs text-black/40">Coupon</div>
+                    </td>
+                  )}
                 </tr>
               );
             })}
@@ -179,4 +212,9 @@ export function TransactionsPanel({ event }: { event: Event }) {
       </div>
     </div>
   );
+}
+
+function couponStatus(action: string) {
+  if (action === "issued" || action === "enabled" || action === "available") return "available";
+  return action;
 }

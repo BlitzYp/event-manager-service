@@ -2,6 +2,7 @@
 
 import { type FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import {
+  CircleAlert,
   Edit3,
   ExternalLink,
   Filter,
@@ -31,6 +32,8 @@ export function ParticipantsPanel({ event, csrf }: { event: Event; csrf: string 
   const [items, setItems] = useState<Participant[]>([]);
   const [groups, setGroups] = useState<string[]>([]);
   const [actions, setActions] = useState<ScheduledAction[]>([]);
+  const [actionsLoaded, setActionsLoaded] = useState(false);
+  const [hasAutomations, setHasAutomations] = useState(false);
   const [draftFilters, setDraftFilters] = useState(emptyFilters);
   const [appliedFilters, setAppliedFilters] = useState(emptyFilters);
   const [selectedWalletIds, setSelectedWalletIds] = useState<Set<number>>(new Set());
@@ -58,7 +61,9 @@ export function ParticipantsPanel({ event, csrf }: { event: Event; csrf: string 
 
   const loadActions = useCallback(async () => {
     const result = await api<{ actions: ScheduledAction[] }>(`/admin/events/${event.id}/actions`);
+    setHasAutomations(result.actions.length > 0);
     setActions(result.actions.filter((action) => action.enabled && !action.completed_at));
+    setActionsLoaded(true);
   }, [event.id]);
 
   useEffect(() => {
@@ -280,34 +285,41 @@ export function ParticipantsPanel({ event, csrf }: { event: Event; csrf: string 
         {notice && <div className="alert-success mb-4 break-all text-sm">{notice}</div>}
         {error && <div className="alert-error mb-4 text-sm">{error}</div>}
 
-        <div ref={bulkRef} className="card mb-4 p-4">
-          <div className="mb-3 flex items-center gap-2">
-            <Zap size={18} className="text-leaf-700" />
-            <div>
-              <h3 className="font-semibold">Participant automation</h3>
-              <p className="text-xs text-black/45">Run or scope an existing automation against this participant filter.</p>
+        {actionsLoaded && (hasAutomations ? (
+          <div ref={bulkRef} className="card mb-4 p-4">
+            <div className="mb-3 flex items-center gap-2">
+              <Zap size={18} className="text-leaf-700" />
+              <div>
+                <h3 className="font-semibold">Participant automation</h3>
+                <p className="text-xs text-black/45">Run or scope an existing automation against this participant filter.</p>
+              </div>
             </div>
+            <div className="grid gap-3 md:grid-cols-[1fr_180px_190px_auto]">
+              <select className="input" value={bulkActionId} onChange={(event) => setBulkActionId(event.target.value)}>
+                <option value="">Choose automation</option>
+                {actions.map((action) => <option key={action.id} value={action.id}>{action.name} · {action.action_type}</option>)}
+              </select>
+              <select className="input" value={bulkScope} onChange={(event) => setBulkScope(event.target.value as "selected" | "filtered")}>
+                <option value="filtered">Filtered ({items.length})</option>
+                <option value="selected">Selected ({selectedWalletIds.size})</option>
+              </select>
+              <select className="input" value={bulkOperation} onChange={(event) => setBulkOperation(event.target.value as "execute" | "include" | "exclude")}>
+                <option value="execute">Execute now</option>
+                <option value="include">Include in schedule</option>
+                <option value="exclude">Exclude from schedule</option>
+              </select>
+              <button type="button" className="button" onClick={() => void applyBulkAction()} disabled={!actions.length}>
+                <Zap size={16} /> Apply
+              </button>
+            </div>
+            {!actions.length && <p className="mt-2 text-xs text-amber-700">Create an enabled automation before applying participant actions.</p>}
           </div>
-          <div className="grid gap-3 md:grid-cols-[1fr_180px_190px_auto]">
-            <select className="input" value={bulkActionId} onChange={(event) => setBulkActionId(event.target.value)}>
-              <option value="">Choose automation</option>
-              {actions.map((action) => <option key={action.id} value={action.id}>{action.name} · {action.action_type}</option>)}
-            </select>
-            <select className="input" value={bulkScope} onChange={(event) => setBulkScope(event.target.value as "selected" | "filtered")}>
-              <option value="filtered">Filtered ({items.length})</option>
-              <option value="selected">Selected ({selectedWalletIds.size})</option>
-            </select>
-            <select className="input" value={bulkOperation} onChange={(event) => setBulkOperation(event.target.value as "execute" | "include" | "exclude")}>
-              <option value="execute">Execute now</option>
-              <option value="include">Include in schedule</option>
-              <option value="exclude">Exclude from schedule</option>
-            </select>
-            <button type="button" className="button" onClick={() => void applyBulkAction()} disabled={!actions.length}>
-              <Zap size={16} /> Apply
-            </button>
+        ) : (
+          <div ref={bulkRef} className="alert-warning mb-4 flex items-center gap-3 text-sm" role="alert">
+            <CircleAlert className="shrink-0" size={20} aria-hidden="true" />
+            <p>No automations have been created. Create one to use participant actions.</p>
           </div>
-          {!actions.length && <p className="mt-2 text-xs text-amber-700">Create an enabled automation before applying participant actions.</p>}
-        </div>
+        ))}
 
         <form
           className="card mb-4 grid gap-3 p-4 md:grid-cols-[minmax(0,1fr)_220px_180px_auto]"
@@ -381,6 +393,7 @@ export function ParticipantsPanel({ event, csrf }: { event: Event; csrf: string 
                 <th>Group</th>
                 <th>Available</th>
                 <th>Status</th>
+                {event.mode !== "money" && <th>Coupons</th>}
                 <th>Actions</th>
               </tr>
             </thead>
@@ -407,6 +420,15 @@ export function ParticipantsPanel({ event, csrf }: { event: Event; csrf: string 
                   <td>{participant.group || "—"}</td>
                   <td>{money(participant.wallet.balance_minor - participant.wallet.reserved_minor, event.currency)}</td>
                   <td><StatusBadge status={participant.wallet.enabled ? "active" : "suspended"} /></td>
+                  {event.mode !== "money" && (
+                    <td>
+                      <strong>{participant.coupons.available} available</strong>
+                      <div className="text-xs text-black/45">
+                        {participant.coupons.redeemed} redeemed
+                        {participant.coupons.disabled ? ` · ${participant.coupons.disabled} disabled` : ""}
+                      </div>
+                    </td>
+                  )}
                   <td>
                     <div className="flex items-center gap-1">
                       <button className="button-secondary min-h-9 px-2" type="button" title="Edit participant" onClick={() => setEditing(participant)}><Edit3 size={15} /></button>

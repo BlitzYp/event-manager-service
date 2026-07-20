@@ -111,6 +111,10 @@ class CouponTemplateCreate(ApiModel):
     sort_order: int = 0
 
 
+class CouponIssueRequest(ApiModel):
+    template_ids: list[int] = Field(min_length=1, max_length=1_000)
+
+
 class CouponRedeem(ApiModel):
     token: str = Field(min_length=20, max_length=200)
 

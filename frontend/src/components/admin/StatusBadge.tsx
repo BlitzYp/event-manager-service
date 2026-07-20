@@ -11,6 +11,7 @@ import {
   PauseCircle,
   Undo2,
   XCircle,
+  TicketCheck,
 } from "lucide-react";
 
 const statusMeta = {
@@ -26,6 +27,9 @@ const statusMeta = {
   rejected: { className: "status-badge--rejected", Icon: XCircle },
   cancelled: { className: "status-badge--cancelled", Icon: Ban },
   reversed: { className: "status-badge--reversed", Icon: Undo2 },
+  available: { className: "status-badge--active", Icon: TicketCheck },
+  redeemed: { className: "status-badge--completed", Icon: TicketCheck },
+  removed: { className: "status-badge--cancelled", Icon: CircleOff },
 } as const;
 
 export function StatusBadge({ status, label }: { status: string; label?: string }) {

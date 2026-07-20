@@ -17,6 +17,7 @@ from .models import (
     ScheduledActionRun,
     ScheduleType,
     TransactionStatus,
+    Vendor,
     Wallet,
     WalletAccessToken,
 )
@@ -40,6 +41,7 @@ def record_coupon_audit(db: Session, coupon: CouponInstance, action_name: str, a
     wallet = db.get(Wallet, coupon.wallet_id)
     if not template or not wallet:
         return
+    vendor = db.get(Vendor, template.vendor_id) if template.vendor_id else None
     db.add(
         CouponAudit(
             event_id=coupon.event_id,
@@ -51,6 +53,7 @@ def record_coupon_audit(db: Session, coupon: CouponInstance, action_name: str, a
             coupon_name=template.name,
             participant_code=wallet.participant.participant_code,
             participant_name=wallet.participant.name,
+            vendor_name=vendor.name if vendor else None,
             actor=actor,
         )
     )

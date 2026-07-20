@@ -313,14 +313,29 @@ def decide_payment(
     return transaction
 
 
-def issue_coupons(db: Session, event_id: int, wallet_ids: list[int] | None, actor: str) -> int:
+def issue_coupons(
+    db: Session,
+    event_id: int,
+    wallet_ids: list[int] | None,
+    actor: str,
+    template_ids: list[int] | None = None,
+) -> int:
+    template_query = select(CouponTemplate).where(
+        CouponTemplate.event_id == event_id, CouponTemplate.active.is_(True)
+    )
+    if template_ids is not None:
+        template_query = template_query.where(CouponTemplate.id.in_(template_ids))
     templates = list(
-        db.scalars(
-            select(CouponTemplate).where(
-                CouponTemplate.event_id == event_id, CouponTemplate.active.is_(True)
+        db.scalars(template_query)
+    )
+    vendor_names = {
+        vendor.id: vendor.name
+        for vendor in db.scalars(
+            select(Vendor).where(
+                Vendor.id.in_([template.vendor_id for template in templates if template.vendor_id])
             )
         )
-    )
+    }
     wallet_query = select(Wallet).where(Wallet.event_id == event_id)
     if wallet_ids is not None:
         wallet_query = wallet_query.where(Wallet.id.in_(wallet_ids))
@@ -358,6 +373,9 @@ def issue_coupons(db: Session, event_id: int, wallet_ids: list[int] | None, acto
                     coupon_name=template.name,
                     participant_code=wallet.participant.participant_code,
                     participant_name=wallet.participant.name,
+                    vendor_name=(
+                        vendor_names.get(template.vendor_id) if template.vendor_id else None
+                    ),
                     actor=actor,
                 )
             )

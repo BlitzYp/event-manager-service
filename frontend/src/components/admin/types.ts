@@ -23,6 +23,12 @@ export type Participant = {
     reserved_minor: number;
     enabled: boolean;
   };
+  coupons: {
+    available: number;
+    disabled: number;
+    redeemed: number;
+    total: number;
+  };
 };
 
 export type Vendor = {
@@ -41,6 +47,7 @@ export type CouponTemplate = {
 };
 
 export type Transaction = {
+  kind: "money";
   id: number;
   reference: string;
   type: string;
@@ -51,6 +58,20 @@ export type Transaction = {
   group?: string | null;
   vendor_id?: number | null;
   vendor_name?: string;
+  created_at: string;
+};
+
+export type CouponTransaction = {
+  kind: "coupon";
+  id: number;
+  reference: string;
+  action: string;
+  coupon_name: string;
+  participant_code: string;
+  participant_name: string;
+  vendor_id?: number | null;
+  vendor_name?: string | null;
+  actor: string;
   created_at: string;
 };
 
