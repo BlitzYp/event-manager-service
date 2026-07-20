@@ -89,6 +89,7 @@ class AdminUser(IdMixin, TimestampMixin, Base):
     email: Mapped[str] = mapped_column(String(320), unique=True, index=True)
     password_hash: Mapped[str] = mapped_column(String(255))
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    is_super_admin: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
 
 
 class AdminSession(IdMixin, Base):
@@ -100,12 +101,18 @@ class AdminSession(IdMixin, Base):
     csrf_hash: Mapped[str] = mapped_column(String(64))
     expires_at: Mapped[datetime] = mapped_column(DateTime, index=True)
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime)
+    impersonator_admin_id: Mapped[int | None] = mapped_column(
+        ForeignKey("admin_users.id", ondelete="SET NULL"), index=True
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
-    admin: Mapped[AdminUser] = relationship()
+    admin: Mapped[AdminUser] = relationship(foreign_keys=[admin_id])
 
 
 class Event(IdMixin, TimestampMixin, Base):
     __tablename__ = "events"
+    admin_id: Mapped[int | None] = mapped_column(
+        ForeignKey("admin_users.id", ondelete="RESTRICT"), index=True
+    )
     code: Mapped[str] = mapped_column(String(50), unique=True, index=True)
     name: Mapped[str] = mapped_column(String(255))
     status: Mapped[EventStatus] = mapped_column(

@@ -23,6 +23,10 @@ from ..models import (
 )
 from ..schemas import CouponRedeem, PaymentCreate, VendorLogin
 from ..security import (
+    coupon_code as make_coupon_code,
+)
+from ..security import (
+    coupon_id_from_code,
     coupon_id_from_token,
     keyed_lookup,
     new_token,
@@ -145,10 +149,13 @@ def logout(
 def lookup(
     qr_token: str | None = None,
     participant_code: str | None = None,
+    coupon_code: str | None = None,
     vendor: Vendor = Depends(require_vendor),
     db: Session = Depends(get_db),
 ) -> dict:
-    coupon_id = coupon_id_from_token(qr_token or "")
+    coupon_id = coupon_id_from_token(qr_token or "") or coupon_id_from_code(
+        coupon_code or ""
+    )
     if coupon_id:
         coupon = db.scalar(
             select(CouponInstance).where(
@@ -164,12 +171,23 @@ def lookup(
             "kind": "coupon",
             "coupon": {
                 "token": qr_token,
+                "code": make_coupon_code(coupon.id),
                 "name": template.name,
                 "status": coupon.status,
                 "participant_name": coupon.wallet.participant.name,
             },
         }
     wallet, _ = resolve_payment_target(db, vendor, qr_token, participant_code)
+    eligible_coupons = db.execute(
+        select(CouponInstance, CouponTemplate)
+        .join(CouponTemplate, CouponTemplate.id == CouponInstance.template_id)
+        .where(
+            CouponInstance.wallet_id == wallet.id,
+            CouponInstance.status != CouponStatus.removed,
+            (CouponTemplate.vendor_id.is_(None) | (CouponTemplate.vendor_id == vendor.id)),
+        )
+        .order_by(CouponTemplate.sort_order, CouponTemplate.name)
+    ).all()
     return {
         "kind": "wallet",
         "wallet": {
@@ -180,6 +198,17 @@ def lookup(
             "balance_minor": wallet.balance_minor,
             "reserved_minor": reserved_minor(db, wallet.id),
             "currency": wallet.event.currency,
+            "coupons": [
+                {
+                    "id": coupon.id,
+                    "token": None,
+                    "code": make_coupon_code(coupon.id),
+                    "name": template.name,
+                    "status": coupon.status,
+                    "participant_name": wallet.participant.name,
+                }
+                for coupon, template in eligible_coupons
+            ],
         },
     }
 
@@ -236,7 +265,9 @@ def redeem_coupon(
     vendor: Vendor = Depends(require_vendor_csrf),
     db: Session = Depends(get_db),
 ) -> dict:
-    coupon_id = coupon_id_from_token(payload.token)
+    coupon_id = coupon_id_from_token(payload.token or "") or coupon_id_from_code(
+        payload.code or ""
+    )
     coupon = db.scalar(
         select(CouponInstance)
         .where(CouponInstance.id == (coupon_id or 0), CouponInstance.event_id == vendor.event_id)

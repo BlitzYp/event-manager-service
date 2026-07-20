@@ -1,4 +1,6 @@
 from app.security import (
+    coupon_code,
+    coupon_id_from_code,
     coupon_id_from_token,
     coupon_token,
     hash_password,
@@ -28,3 +30,10 @@ def test_coupon_token_is_opaque_and_tamper_evident() -> None:
     assert coupon_id_from_token(token) == 42
     assert coupon_id_from_token(token + "x") is None
     assert coupon_id_from_token("coupon.43." + token.rsplit(".", 1)[1]) is None
+
+
+def test_coupon_code_is_human_enterable_and_tamper_evident() -> None:
+    code = coupon_code(42)
+    assert code.startswith("CP-")
+    assert coupon_id_from_code(code.lower()) == 42
+    assert coupon_id_from_code(code[:-1] + ("0" if code[-1] != "0" else "1")) is None

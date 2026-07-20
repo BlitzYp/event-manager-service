@@ -18,7 +18,7 @@ type State = {
   };
   pending: Transaction[];
   transactions: Transaction[];
-  coupons: { id: number; name: string; status: string; qr_token?: string }[];
+  coupons: { id: number; name: string; status: string; code: string; qr_token?: string }[];
 };
 type Transaction = {
   id: number;
@@ -251,6 +251,7 @@ function CouponCard({ coupon }: { coupon: State["coupons"][number] }) {
           <div>
             <strong>{coupon.name}</strong>
             <p className="text-xs uppercase text-black/40">{coupon.status}</p>
+            <p className="mt-1 font-mono text-xs font-semibold">{coupon.code}</p>
           </div>
           {coupon.status === "available" && (
             <button

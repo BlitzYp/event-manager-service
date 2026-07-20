@@ -3,19 +3,20 @@ import io
 from datetime import date, datetime, time, timedelta
 from typing import Literal
 
-from fastapi import APIRouter, Depends, File, Query, Response, UploadFile
+from fastapi import APIRouter, Cookie, Depends, File, Query, Response, UploadFile
 from openpyxl import Workbook
 from sqlalchemy import func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from ..actions import execute_action
+from ..actions import execute_action, record_coupon_audit
 from ..config import settings
 from ..database import get_db, utcnow
-from ..dependencies import require_admin, require_admin_csrf
+from ..dependencies import require_admin, require_admin_csrf, require_admin_event_access
 from ..errors import ApiError
 from ..models import (
     ActionWalletOverride,
+    AdminSession,
     AdminUser,
     CouponAudit,
     CouponInstance,
@@ -38,15 +39,20 @@ from ..schemas import (
     ActionCreate,
     ActionWalletScope,
     AdjustmentRequest,
+    AdminAccountStatusUpdate,
     CouponIssueRequest,
+    CouponStatusUpdate,
     CouponTemplateCreate,
+    CouponTemplateUpdate,
     EventCreate,
     EventUpdate,
     ParticipantCreate,
     ParticipantUpdate,
     VendorCreate,
+    VendorUpdate,
 )
-from ..security import hash_password, keyed_lookup
+from ..security import coupon_code as make_coupon_code
+from ..security import hash_password, keyed_lookup, token_hash
 from ..services import (
     create_participant_with_wallet,
     create_wallet_preview_token,
@@ -58,7 +64,11 @@ from ..services import (
     validate_participant_csv,
 )
 
-router = APIRouter(prefix="/admin", tags=["administration"])
+router = APIRouter(
+    prefix="/admin",
+    tags=["administration"],
+    dependencies=[Depends(require_admin_event_access)],
+)
 
 
 def event_json(row: Event) -> dict:
@@ -87,20 +97,110 @@ def get_event(db: Session, event_id: int, lock: bool = False) -> Event:
     return event
 
 
+def require_super_admin(admin: AdminUser) -> None:
+    if not admin.is_super_admin:
+        raise ApiError(403, "super_admin_required", "Super-admin access is required.")
+
+
+@router.get("/accounts")
+def list_admin_accounts(
+    admin: AdminUser = Depends(require_admin), db: Session = Depends(get_db)
+) -> dict:
+    require_super_admin(admin)
+    rows = db.execute(
+        select(AdminUser, func.count(Event.id))
+        .outerjoin(Event, Event.admin_id == AdminUser.id)
+        .group_by(AdminUser.id)
+        .order_by(AdminUser.created_at)
+    ).all()
+    return {
+        "accounts": [
+            {
+                "id": account.id,
+                "email": account.email,
+                "is_active": account.is_active,
+                "is_super_admin": account.is_super_admin,
+                "event_count": event_count,
+                "created_at": account.created_at,
+            }
+            for account, event_count in rows
+        ],
+        "totals": {
+            "admins": len(rows),
+            "events": sum(event_count for _, event_count in rows),
+        },
+    }
+
+
+@router.post("/accounts/{account_id}/impersonate")
+def impersonate_admin(
+    account_id: int,
+    admin: AdminUser = Depends(require_admin_csrf),
+    db: Session = Depends(get_db),
+    admin_session: str | None = Cookie(default=None),
+) -> dict:
+    require_super_admin(admin)
+    target = db.get(AdminUser, account_id)
+    if not target or not target.is_active:
+        raise ApiError(404, "not_found", "Active administrator account was not found.")
+    if target.id == admin.id or target.is_super_admin:
+        raise ApiError(409, "invalid_impersonation", "Select a regular administrator account.")
+    session = db.scalar(
+        select(AdminSession).where(
+            AdminSession.token_hash == token_hash(admin_session or "")
+        ).with_for_update()
+    )
+    if not session:
+        raise ApiError(401, "authentication_required", "Authentication required.")
+    session.admin_id = target.id
+    session.impersonator_admin_id = admin.id
+    db.commit()
+    return {"user": {"id": target.id, "email": target.email, "impersonating": True}}
+
+
+@router.patch("/accounts/{account_id}/status")
+def set_admin_account_status(
+    account_id: int,
+    payload: AdminAccountStatusUpdate,
+    admin: AdminUser = Depends(require_admin_csrf),
+    db: Session = Depends(get_db),
+) -> dict:
+    require_super_admin(admin)
+    target = db.scalar(select(AdminUser).where(AdminUser.id == account_id).with_for_update())
+    if not target:
+        raise ApiError(404, "not_found", "Administrator account was not found.")
+    if target.id == admin.id or target.is_super_admin:
+        raise ApiError(409, "protected_account", "Super-admin accounts cannot be disabled here.")
+    target.is_active = payload.is_active
+    db.commit()
+    return {
+        "account": {
+            "id": target.id,
+            "email": target.email,
+            "is_active": target.is_active,
+        }
+    }
+
+
 @router.get("/events")
 def list_events(_: AdminUser = Depends(require_admin), db: Session = Depends(get_db)) -> dict:
+    query = select(Event)
+    if not _.is_super_admin:
+        query = query.where(Event.admin_id == _.id)
     return {
         "events": [
-            event_json(row) for row in db.scalars(select(Event).order_by(Event.created_at.desc()))
+            event_json(row) for row in db.scalars(query.order_by(Event.created_at.desc()))
         ]
     }
 
 
 @router.post("/events", status_code=201)
 def create_event(
-    payload: EventCreate, _: AdminUser = Depends(require_admin_csrf), db: Session = Depends(get_db)
+    payload: EventCreate,
+    admin: AdminUser = Depends(require_admin_csrf),
+    db: Session = Depends(get_db),
 ) -> dict:
-    event = Event(**payload.model_dump())
+    event = Event(admin_id=admin.id, **payload.model_dump())
     db.add(event)
     try:
         db.commit()
@@ -123,6 +223,33 @@ def update_event(
         setattr(event, key, value)
     db.commit()
     return {"event": event_json(event)}
+
+
+@router.delete("/events/{event_id}", status_code=204)
+def delete_event(
+    event_id: int,
+    _: AdminUser = Depends(require_admin_csrf),
+    db: Session = Depends(get_db),
+) -> Response:
+    event = get_event(db, event_id, lock=True)
+    transaction_count = db.scalar(
+        select(func.count(MoneyTransaction.id)).where(MoneyTransaction.event_id == event_id)
+    )
+    coupon_audit_count = db.scalar(
+        select(func.count(CouponAudit.id)).where(CouponAudit.event_id == event_id)
+    )
+    coupon_count = db.scalar(
+        select(func.count(CouponInstance.id)).where(CouponInstance.event_id == event_id)
+    )
+    if transaction_count or coupon_audit_count or coupon_count:
+        raise ApiError(
+            409,
+            "event_has_history",
+            "Events with transaction or coupon history cannot be deleted; archive it instead.",
+        )
+    db.delete(event)
+    db.commit()
+    return Response(status_code=204)
 
 
 @router.get("/events/{event_id}/participants")
@@ -579,6 +706,80 @@ def create_vendor(
     return {"vendor": {"id": vendor.id, "name": vendor.name, "active": vendor.active}}
 
 
+@router.put("/events/{event_id}/vendors/{vendor_id}")
+def update_vendor(
+    event_id: int,
+    vendor_id: int,
+    payload: VendorUpdate,
+    _: AdminUser = Depends(require_admin_csrf),
+    db: Session = Depends(get_db),
+) -> dict:
+    vendor = db.scalar(
+        select(Vendor).where(Vendor.id == vendor_id, Vendor.event_id == event_id).with_for_update()
+    )
+    if not vendor:
+        raise ApiError(404, "not_found", "Vendor was not found.")
+    vendor.name = payload.name
+    vendor.active = payload.active
+    if payload.pin:
+        vendor.pin_lookup = keyed_lookup(payload.pin, f"vendor-pin:{event_id}")
+        vendor.pin_hash = hash_password(payload.pin)
+    if payload.pin or not payload.active:
+        for session in db.scalars(
+            select(VendorSession).where(
+                VendorSession.vendor_id == vendor.id, VendorSession.revoked_at.is_(None)
+            )
+        ):
+            session.revoked_at = utcnow()
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        raise ApiError(409, "pin_in_use", "That PIN is already in use for this event.") from exc
+    return {"vendor": {"id": vendor.id, "name": vendor.name, "active": vendor.active}}
+
+
+@router.delete("/events/{event_id}/vendors/{vendor_id}", status_code=204)
+def delete_vendor(
+    event_id: int,
+    vendor_id: int,
+    admin: AdminUser = Depends(require_admin_csrf),
+    db: Session = Depends(get_db),
+) -> Response:
+    vendor = db.scalar(
+        select(Vendor).where(Vendor.id == vendor_id, Vendor.event_id == event_id).with_for_update()
+    )
+    if not vendor:
+        raise ApiError(404, "not_found", "Vendor was not found.")
+    templates = list(
+        db.scalars(
+            select(CouponTemplate).where(
+                CouponTemplate.event_id == event_id,
+                CouponTemplate.vendor_id == vendor.id,
+            )
+        )
+    )
+    template_ids = [template.id for template in templates]
+    for template in templates:
+        template.active = False
+    if template_ids:
+        coupons = list(
+            db.scalars(
+                select(CouponInstance).where(
+                    CouponInstance.event_id == event_id,
+                    CouponInstance.template_id.in_(template_ids),
+                    CouponInstance.status == CouponStatus.available,
+                ).with_for_update()
+            )
+        )
+        for coupon in coupons:
+            coupon.status = CouponStatus.disabled
+            record_coupon_audit(db, coupon, "disabled", f"admin:{admin.id}")
+    db.delete(vendor)
+    db.commit()
+    return Response(status_code=204)
+
+
 @router.put("/events/{event_id}/vendors/{vendor_id}/pin")
 def rotate_vendor_pin(
     event_id: int,
@@ -648,6 +849,172 @@ def create_coupon_template(
     db.add(template)
     db.commit()
     return {"template": {"id": template.id, "name": template.name}}
+
+
+@router.put("/events/{event_id}/coupon-templates/{template_id}")
+def update_coupon_template(
+    event_id: int,
+    template_id: int,
+    payload: CouponTemplateUpdate,
+    admin: AdminUser = Depends(require_admin_csrf),
+    db: Session = Depends(get_db),
+) -> dict:
+    template = db.scalar(
+        select(CouponTemplate).where(
+            CouponTemplate.id == template_id, CouponTemplate.event_id == event_id
+        ).with_for_update()
+    )
+    if not template:
+        raise ApiError(404, "not_found", "Coupon was not found.")
+    if payload.vendor_id and not db.scalar(
+        select(Vendor.id).where(Vendor.id == payload.vendor_id, Vendor.event_id == event_id)
+    ):
+        raise ApiError(422, "vendor_mismatch", "Vendor does not belong to this event.")
+    template.name = payload.name
+    template.vendor_id = payload.vendor_id
+    template.sort_order = payload.sort_order
+    template.active = payload.active
+    changed = 0
+    if payload.apply_to_instances:
+        target = CouponStatus.available if payload.active else CouponStatus.disabled
+        source = CouponStatus.disabled if payload.active else CouponStatus.available
+        coupons = list(
+            db.scalars(
+                select(CouponInstance).where(
+                    CouponInstance.event_id == event_id,
+                    CouponInstance.template_id == template_id,
+                    CouponInstance.status == source,
+                ).with_for_update()
+            )
+        )
+        for coupon in coupons:
+            coupon.status = target
+            record_coupon_audit(db, coupon, target.value, f"admin:{admin.id}")
+        changed = len(coupons)
+    db.commit()
+    return {
+        "template": {
+            "id": template.id,
+            "name": template.name,
+            "active": template.active,
+        },
+        "updated_instances": changed,
+    }
+
+
+@router.delete("/events/{event_id}/coupon-templates/{template_id}", status_code=204)
+def delete_coupon_template(
+    event_id: int,
+    template_id: int,
+    _: AdminUser = Depends(require_admin_csrf),
+    db: Session = Depends(get_db),
+) -> Response:
+    template = db.scalar(
+        select(CouponTemplate).where(
+            CouponTemplate.id == template_id, CouponTemplate.event_id == event_id
+        ).with_for_update()
+    )
+    if not template:
+        raise ApiError(404, "not_found", "Coupon was not found.")
+    issued = db.scalar(
+        select(func.count(CouponInstance.id)).where(CouponInstance.template_id == template.id)
+    )
+    if issued:
+        raise ApiError(
+            409, "coupon_has_history",
+            "Issued coupons cannot be deleted; disable this coupon instead.",
+        )
+    db.delete(template)
+    db.commit()
+    return Response(status_code=204)
+
+
+@router.patch("/events/{event_id}/coupons/status")
+def set_coupon_status(
+    event_id: int,
+    payload: CouponStatusUpdate,
+    admin: AdminUser = Depends(require_admin_csrf),
+    db: Session = Depends(get_db),
+) -> dict:
+    query = select(CouponInstance).where(
+        CouponInstance.event_id == event_id,
+        CouponInstance.status == (
+            CouponStatus.disabled if payload.enabled else CouponStatus.available
+        ),
+    )
+    if payload.template_id is not None:
+        query = query.where(CouponInstance.template_id == payload.template_id)
+    coupons = list(db.scalars(query.with_for_update()))
+    target = CouponStatus.available if payload.enabled else CouponStatus.disabled
+    for coupon in coupons:
+        coupon.status = target
+        record_coupon_audit(db, coupon, target.value, f"admin:{admin.id}")
+    templates_query = select(CouponTemplate).where(CouponTemplate.event_id == event_id)
+    if payload.template_id is not None:
+        templates_query = templates_query.where(CouponTemplate.id == payload.template_id)
+    for template in db.scalars(templates_query):
+        template.active = payload.enabled
+    db.commit()
+    return {"updated": len(coupons)}
+
+
+@router.get("/events/{event_id}/coupon-instances")
+def list_coupon_instances(
+    event_id: int,
+    _: AdminUser = Depends(require_admin),
+    db: Session = Depends(get_db),
+) -> dict:
+    rows = db.execute(
+        select(CouponInstance, CouponTemplate, Participant)
+        .join(CouponTemplate, CouponTemplate.id == CouponInstance.template_id)
+        .join(Wallet, Wallet.id == CouponInstance.wallet_id)
+        .join(Participant, Participant.id == Wallet.participant_id)
+        .where(
+            CouponInstance.event_id == event_id,
+            CouponInstance.status != CouponStatus.removed,
+        )
+        .order_by(Participant.name, CouponTemplate.sort_order)
+        .limit(2_000)
+    ).all()
+    return {
+        "coupons": [
+            {
+                "id": coupon.id,
+                "code": make_coupon_code(coupon.id),
+                "name": template.name,
+                "participant_name": participant.name,
+                "participant_code": participant.participant_code,
+                "status": coupon.status,
+            }
+            for coupon, template, participant in rows
+        ]
+    }
+
+
+@router.patch("/events/{event_id}/coupons/{coupon_id}/status")
+def set_individual_coupon_status(
+    event_id: int,
+    coupon_id: int,
+    payload: CouponStatusUpdate,
+    admin: AdminUser = Depends(require_admin_csrf),
+    db: Session = Depends(get_db),
+) -> dict:
+    coupon = db.scalar(
+        select(CouponInstance).where(
+            CouponInstance.id == coupon_id,
+            CouponInstance.event_id == event_id,
+        ).with_for_update()
+    )
+    if not coupon:
+        raise ApiError(404, "not_found", "Coupon was not found.")
+    if coupon.status not in {CouponStatus.available, CouponStatus.disabled}:
+        raise ApiError(409, "coupon_locked", "Redeemed coupons cannot be enabled or disabled.")
+    target = CouponStatus.available if payload.enabled else CouponStatus.disabled
+    if coupon.status != target:
+        coupon.status = target
+        record_coupon_audit(db, coupon, target.value, f"admin:{admin.id}")
+        db.commit()
+    return {"coupon": {"id": coupon.id, "status": coupon.status}}
 
 
 @router.post("/events/{event_id}/coupons/issue")

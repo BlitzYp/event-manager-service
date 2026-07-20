@@ -18,9 +18,86 @@ from app.models import (
     ScheduleType,
     Wallet,
 )
-from app.routers.admin import apply_action_wallet_scope, delete_participant, list_participants
-from app.schemas import ActionWalletScope
+from app.routers.admin import (
+    apply_action_wallet_scope,
+    delete_participant,
+    list_participants,
+    update_event,
+)
+from app.schemas import ActionWalletScope, EventUpdate
 from app.services import create_participant_with_wallet, issue_coupons
+
+
+def test_multiple_events_can_be_active_at_the_same_time() -> None:
+    db = SessionLocal()
+    event_ids: list[int] = []
+    owner_ids: list[int] = []
+    try:
+        suffix = uuid4().hex[:10]
+        first_owner = AdminUser(
+            email=f"owner-a-{suffix}@example.invalid", password_hash="unused"
+        )
+        second_owner = AdminUser(
+            email=f"owner-b-{suffix}@example.invalid", password_hash="unused"
+        )
+        db.add_all([first_owner, second_owner])
+        db.flush()
+        owner_ids = [first_owner.id, second_owner.id]
+        first = Event(
+            admin_id=first_owner.id,
+            code=f"active-a-{suffix}",
+            name="First active event",
+            status=EventStatus.draft,
+            mode=EventMode.money,
+            currency="EUR",
+            default_balance_minor=0,
+        )
+        second = Event(
+            admin_id=second_owner.id,
+            code=f"active-b-{suffix}",
+            name="Second active event",
+            status=EventStatus.active,
+            mode=EventMode.coupons,
+            currency="EUR",
+            default_balance_minor=0,
+        )
+        db.add_all([first, second])
+        db.commit()
+        event_ids = [first.id, second.id]
+
+        update_event(
+            first.id,
+            EventUpdate(
+                code=first.code,
+                name=first.name,
+                status=EventStatus.active,
+                mode=first.mode,
+                currency=first.currency,
+                default_balance_minor=first.default_balance_minor,
+                qr_ttl_seconds=first.qr_ttl_seconds,
+                approval_required=first.approval_required,
+                pending_payment_minutes=first.pending_payment_minutes,
+            ),
+            first_owner,
+            db,
+        )
+
+        db.expire_all()
+        assert db.get(Event, first.id).status == EventStatus.active
+        assert db.get(Event, second.id).status == EventStatus.active
+    finally:
+        db.rollback()
+        for event_id in event_ids:
+            event = db.get(Event, event_id)
+            if event:
+                db.delete(event)
+        db.flush()
+        for owner_id in owner_ids:
+            owner = db.get(AdminUser, owner_id)
+            if owner:
+                db.delete(owner)
+        db.commit()
+        db.close()
 
 
 def test_participant_delete_and_scoped_action_execution() -> None:

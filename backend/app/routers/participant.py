@@ -11,7 +11,7 @@ from ..models import (
     TransactionStatus,
 )
 from ..schemas import DecisionRequest
-from ..security import coupon_token
+from ..security import coupon_code, coupon_token
 from ..services import create_payment_qr, decide_payment, reserved_minor, wallet_for_access_token
 
 router = APIRouter(prefix="/participant", tags=["participant-wallet"])
@@ -69,6 +69,7 @@ def wallet_payload(db: Session, access_token: str) -> dict:
                 "id": coupon.id,
                 "name": template.name,
                 "status": coupon.status,
+                "code": coupon_code(coupon.id),
                 "qr_token": coupon_token(coupon.id)
                 if coupon.status == CouponStatus.available
                 else None,

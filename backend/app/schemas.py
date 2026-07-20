@@ -36,6 +36,14 @@ class LoginRequest(ApiModel):
         return normalize_admin_email(value)
 
 
+class AdminRegister(LoginRequest):
+    password: str = Field(min_length=12, max_length=200)
+
+
+class AdminAccountStatusUpdate(ApiModel):
+    is_active: bool
+
+
 class EventCreate(ApiModel):
     code: str = Field(pattern=r"^[A-Za-z0-9_-]{2,50}$")
     name: str = Field(min_length=1, max_length=255)
@@ -82,6 +90,12 @@ class VendorCreate(ApiModel):
     pin: str = Field(pattern=r"^\d{6}$")
 
 
+class VendorUpdate(ApiModel):
+    name: str = Field(min_length=1, max_length=255)
+    active: bool = True
+    pin: str | None = Field(default=None, pattern=r"^\d{6}$")
+
+
 class VendorLogin(ApiModel):
     event_code: str = Field(min_length=2, max_length=50)
     pin: str = Field(pattern=r"^\d{6}$")
@@ -111,12 +125,29 @@ class CouponTemplateCreate(ApiModel):
     sort_order: int = 0
 
 
+class CouponTemplateUpdate(CouponTemplateCreate):
+    active: bool = True
+    apply_to_instances: bool = True
+
+
+class CouponStatusUpdate(ApiModel):
+    enabled: bool
+    template_id: int | None = None
+
+
 class CouponIssueRequest(ApiModel):
     template_ids: list[int] = Field(min_length=1, max_length=1_000)
 
 
 class CouponRedeem(ApiModel):
-    token: str = Field(min_length=20, max_length=200)
+    token: str | None = Field(default=None, min_length=20, max_length=200)
+    code: str | None = Field(default=None, min_length=6, max_length=40)
+
+    @model_validator(mode="after")
+    def require_coupon_identifier(self) -> "CouponRedeem":
+        if not self.token and not self.code:
+            raise ValueError("A coupon token or coupon code is required.")
+        return self
 
 
 class ActionCreate(ApiModel):

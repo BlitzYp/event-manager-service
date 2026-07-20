@@ -9,6 +9,7 @@ import {
   LogOut,
   Search,
   Store,
+  Ticket,
   X,
 } from "lucide-react";
 import { PublicShell } from "@/components/Shell";
@@ -28,9 +29,11 @@ type Wallet = {
   balance_minor: number;
   reserved_minor: number;
   currency: string;
+  coupons: Coupon[];
 };
 type Coupon = {
-  token: string;
+  token?: string | null;
+  code: string;
   name: string;
   status: string;
   participant_name: string;
@@ -172,6 +175,19 @@ function VendorConsole({
       setStep("start");
     }
   }, []);
+  const lookupCouponCode = useCallback(async (value: string) => {
+    setError("");
+    try {
+      const result = await api<{ kind: "coupon"; coupon: Coupon }>(
+        `/vendor/lookup?coupon_code=${encodeURIComponent(value)}`,
+      );
+      setCoupon(result.coupon);
+      setStep("coupon");
+    } catch (x) {
+      setError(x instanceof Error ? x.message : "Coupon was not found.");
+      setStep("start");
+    }
+  }, []);
   async function startScanner() {
     setError("");
     setStep("scan");
@@ -231,7 +247,10 @@ function VendorConsole({
     try {
       const r = await api<{ redemption: { reference: string } }>(
         `/vendor/coupons/redeem`,
-        { method: "POST", body: JSON.stringify({ token: coupon.token }) },
+        {
+          method: "POST",
+          body: JSON.stringify(coupon.token ? { token: coupon.token } : { code: coupon.code }),
+        },
         csrf,
       );
       setMessage(`Coupon redeemed. Reference ${r.redemption.reference}.`);
@@ -283,6 +302,7 @@ function VendorConsole({
             <Start
               onScan={() => void startScanner()}
               onLookup={(code) => void lookup(code, true)}
+              onCouponLookup={(code) => void lookupCouponCode(code)}
             />
           )}{" "}
           {step === "scan" && (
@@ -324,6 +344,25 @@ function VendorConsole({
                   )}
                 </p>
               </div>
+              {!!wallet.coupons.length && (
+                <div className="mb-6">
+                  <p className="label">Coupons</p>
+                  <div className="mt-2 grid gap-2">
+                    {wallet.coupons.map((item) => (
+                      <button
+                        type="button"
+                        key={item.code}
+                        disabled={item.status !== "available"}
+                        className="button-secondary justify-between"
+                        onClick={() => { setCoupon(item); setStep("coupon"); }}
+                      >
+                        <span>{item.name}</span>
+                        <span className="text-xs uppercase">{item.status}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
               <label className="label">Amount</label>
               <input
                 className="input text-2xl font-bold"
@@ -344,6 +383,7 @@ function VendorConsole({
               <p className="mt-1 text-black/50">
                 Issued to {coupon.participant_name}
               </p>
+              <p className="mt-2 font-mono text-sm font-semibold">{coupon.code}</p>
               <div className="alert-warning my-6 text-sm">
                 A redeemed coupon cannot be used again.
               </div>
@@ -371,11 +411,14 @@ function VendorConsole({
 function Start({
   onScan,
   onLookup,
+  onCouponLookup,
 }: {
   onScan: () => void;
   onLookup: (code: string) => void;
+  onCouponLookup: (code: string) => void;
 }) {
   const [code, setCode] = useState("");
+  const [couponCode, setCouponCode] = useState("");
   return (
     <div className="p-6">
       <h2 className="text-3xl font-semibold">
@@ -406,6 +449,22 @@ function Start({
           onClick={() => onLookup(code.trim())}
         >
           <Search size={18} />
+        </button>
+      </div>
+      <label className="label mt-5">Coupon code</label>
+      <div className="flex gap-2">
+        <input
+          className="input font-mono uppercase"
+          value={couponCode}
+          onChange={(e) => setCouponCode(e.target.value.toUpperCase())}
+          placeholder="CP-…"
+        />
+        <button
+          className="button-secondary"
+          disabled={!couponCode.trim()}
+          onClick={() => onCouponLookup(couponCode.trim())}
+        >
+          <Ticket size={18} />
         </button>
       </div>
     </div>

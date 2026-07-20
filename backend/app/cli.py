@@ -24,10 +24,17 @@ def create_admin(email: str | None, password: str | None) -> None:
         if admin:
             admin.password_hash = hash_password(password)
             admin.is_active = True
+            admin.is_super_admin = True
             message = "Admin password updated."
         else:
-            db.add(AdminUser(email=email, password_hash=hash_password(password)))
-            message = "Admin created."
+            db.add(
+                AdminUser(
+                    email=email,
+                    password_hash=hash_password(password),
+                    is_super_admin=True,
+                )
+            )
+            message = "Super-admin created."
         db.commit()
         print(message)
 

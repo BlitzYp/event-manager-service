@@ -1,7 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { CalendarRange, CheckCircle2, Clock3, Download, Ticket, Users, WalletCards } from "lucide-react";
+import { CalendarRange, CheckCircle2, Clock3, Download, ShieldCheck, Ticket, Users, WalletCards } from "lucide-react";
+import { AccountsPanel } from "./AccountsPanel";
 import { ActionsPanel } from "./ActionsPanel";
 import { CouponsPanel } from "./CouponsPanel";
 import { EventsPanel } from "./EventsPanel";
@@ -11,10 +12,11 @@ import { TransactionsPanel } from "./TransactionsPanel";
 import type { Event } from "./types";
 import { VendorsPanel } from "./VendorsPanel";
 
-type Tab = "events" | "participants" | "vendors" | "coupons" | "actions" | "transactions";
+type Tab = "events" | "accounts" | "participants" | "vendors" | "coupons" | "actions" | "transactions";
 
 const tabs = [
   ["events", "Events", CalendarRange],
+  ["accounts", "Admin accounts", ShieldCheck],
   ["participants", "Participants", Users],
   ["vendors", "Vendors", WalletCards],
   ["coupons", "Coupons", Ticket],
@@ -28,12 +30,16 @@ export function EventWorkspace({
   csrf,
   onSelectEvent,
   onEventsChanged,
+  isSuperAdmin,
+  onImpersonated,
 }: {
   event?: Event;
   events: Event[];
   csrf: string;
   onSelectEvent: (eventId: number) => void;
   onEventsChanged: () => Promise<void>;
+  isSuperAdmin: boolean;
+  onImpersonated: () => Promise<void>;
 }) {
   const [tab, setTab] = useState<Tab>(event ? "participants" : "events");
 
@@ -58,11 +64,11 @@ export function EventWorkspace({
         aria-label="Event sections"
         role="tablist"
       >
-        {tabs.map(([key, label, Icon]) => (
+        {tabs.filter(([key]) => key !== "accounts" || isSuperAdmin).map(([key, label, Icon]) => (
           <button
             key={key}
             onClick={() => setTab(key)}
-            disabled={key !== "events" && !event}
+            disabled={key !== "events" && key !== "accounts" && !event}
             role="tab"
             aria-selected={tab === key}
           >
@@ -79,6 +85,9 @@ export function EventWorkspace({
           onSelect={onSelectEvent}
           onChanged={onEventsChanged}
         />
+      )}
+      {tab === "accounts" && isSuperAdmin && (
+        <AccountsPanel csrf={csrf} onImpersonated={onImpersonated} />
       )}
       {tab === "participants" && event && <ParticipantsPanel event={event} csrf={csrf} />}
       {tab === "vendors" && event && <VendorsPanel event={event} csrf={csrf} />}

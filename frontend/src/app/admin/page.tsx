@@ -8,21 +8,34 @@ import type { Event } from "@/components/admin/types";
 import { Brand } from "@/components/Shell";
 import { ApiFailure, api, money } from "@/lib/api";
 
+type AdminIdentity = {
+  email: string;
+  is_super_admin: boolean;
+  is_active: boolean;
+  impersonating: boolean;
+};
+
 export default function AdminPage() {
   const [authChecked, setAuthChecked] = useState(false);
-  const [user, setUser] = useState<{ email: string } | null>(null);
+  const [user, setUser] = useState<AdminIdentity | null>(null);
   const [csrf, setCsrf] = useState("");
   const [error, setError] = useState("");
   const [events, setEvents] = useState<Event[]>([]);
   const [eventId, setEventId] = useState<number>();
+  const [registering, setRegistering] = useState(false);
 
   const bootstrap = useCallback(async () => {
     try {
-      const me = await api<{ user: { email: string } }>("/auth/me");
+      const me = await api<{ user: AdminIdentity }>("/auth/me");
       const token = await api<{ csrf_token: string }>("/auth/csrf", { method: "POST" });
-      const result = await api<{ events: Event[] }>("/admin/events");
       setUser(me.user);
       setCsrf(token.csrf_token);
+      if (!me.user.is_active) {
+        setEvents([]);
+        setEventId(undefined);
+        return;
+      }
+      const result = await api<{ events: Event[] }>("/admin/events");
       setEvents(result.events);
       setEventId((current) =>
         current && result.events.some((event) => event.id === current)
@@ -43,13 +56,32 @@ export default function AdminPage() {
     void bootstrap();
   }, [bootstrap]);
 
+  useEffect(() => {
+    if (!user) return;
+    const interval = window.setInterval(async () => {
+      try {
+        const result = await api<{ user: AdminIdentity }>("/auth/me");
+        if (!result.user.is_active && user.is_active) {
+          setUser(result.user);
+          setEvents([]);
+          setEventId(undefined);
+        } else if (result.user.is_active && !user.is_active) {
+          await bootstrap();
+        }
+      } catch {
+        // A transient status-check failure should not discard the current page.
+      }
+    }, 15_000);
+    return () => window.clearInterval(interval);
+  }, [bootstrap, user]);
+
   async function login(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError("");
     const form = new FormData(event.currentTarget);
     try {
-      const result = await api<{ user: { email: string }; csrf_token: string }>(
-        "/auth/login",
+      const result = await api<{ user: AdminIdentity; csrf_token: string }>(
+        registering ? "/auth/register" : "/auth/login",
         {
           method: "POST",
           body: JSON.stringify({ email: form.get("email"), password: form.get("password") }),
@@ -82,14 +114,17 @@ export default function AdminPage() {
             <Brand />
           </div>
           <span className="wallet-icon mb-3"><WalletCards size={22} /></span>
-          <h1 className="text-3xl font-semibold">Administrator sign in</h1>
-          <p className="mt-2 text-sm text-black/55">Manage events, participants and audit records.</p>
+          <h1 className="text-3xl font-semibold">{registering ? "Create administrator account" : "Administrator sign in"}</h1>
+          <p className="mt-2 text-sm text-black/55">Create and manage your own events, participants and vendors.</p>
           {error && <p className="alert-error mt-5 text-sm">{error}</p>}
           <label className="label mt-6">Email</label>
           <input className="input" name="email" type="email" required autoComplete="email" />
           <label className="label mt-4">Password</label>
-          <input className="input" name="password" type="password" required autoComplete="current-password" />
-          <button className="button mt-6 w-full">Sign in</button>
+          <input className="input" name="password" type="password" minLength={registering ? 12 : 8} required autoComplete={registering ? "new-password" : "current-password"} />
+          <button className="button mt-6 w-full">{registering ? "Create account" : "Sign in"}</button>
+          <button type="button" className="mt-4 w-full text-sm font-semibold text-leaf-700" onClick={() => { setRegistering(!registering); setError(""); }}>
+            {registering ? "Already have an account? Sign in" : "Need an account? Register"}
+          </button>
         </form>
       </main>
     );
@@ -117,6 +152,13 @@ export default function AdminPage() {
       </header>
 
       <main className="mx-auto max-w-[1440px] px-4 py-10 sm:px-6">
+        {!user.is_active ? (
+          <div className="alert-warning mx-auto max-w-3xl p-6">
+            <h1 className="text-xl font-semibold">Administrator account disabled</h1>
+            <p className="mt-2 text-sm">Your account has been disabled by a super-admin. Event data, transaction history, exports, and administrative actions are unavailable. Contact a super-admin to restore access.</p>
+          </div>
+        ) : (<>
+        {user.impersonating && <div className="alert-warning mb-5 flex items-center justify-between gap-3 text-sm"><span>You are viewing this account as super-admin.</span><button className="button-secondary min-h-9" onClick={async () => { await api("/auth/stop-impersonating", { method: "POST" }, csrf); await bootstrap(); }}>Return to super-admin</button></div>}
         <div className="mb-6 flex flex-col justify-between gap-4 md:flex-row md:items-center">
           <div>
             <h1 className="text-3xl font-semibold">Virtual wallet</h1>
@@ -158,12 +200,16 @@ export default function AdminPage() {
         )}
 
         <EventWorkspace
+          key={`${user.email}:${user.impersonating}`}
           event={selected}
           events={events}
           csrf={csrf}
           onSelectEvent={setEventId}
           onEventsChanged={bootstrap}
+          isSuperAdmin={user.is_super_admin && !user.impersonating}
+          onImpersonated={bootstrap}
         />
+        </>)}
       </main>
     </div>
   );

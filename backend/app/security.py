@@ -37,6 +37,30 @@ def coupon_id_from_token(value: str) -> int | None:
     return int(parts[1]) if hmac.compare_digest(value, expected) else None
 
 
+def coupon_code(coupon_id: int) -> str:
+    """Return a short, human-enterable, tamper-evident coupon code."""
+    alphabet = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+    value, encoded = coupon_id, ""
+    while value:
+        value, remainder = divmod(value, 36)
+        encoded = alphabet[remainder] + encoded
+    encoded = encoded or "0"
+    signature = keyed_lookup(str(coupon_id), "coupon-code")[:8].upper()
+    return f"CP-{encoded}-{signature}"
+
+
+def coupon_id_from_code(value: str) -> int | None:
+    parts = value.strip().upper().split("-")
+    if len(parts) != 3 or parts[0] != "CP":
+        return None
+    try:
+        coupon_id = int(parts[1], 36)
+    except ValueError:
+        return None
+    expected = coupon_code(coupon_id)
+    return coupon_id if hmac.compare_digest(value.strip().upper(), expected) else None
+
+
 def hash_password(value: str) -> str:
     return password_hasher.hash(value)
 
