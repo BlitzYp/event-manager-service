@@ -1,4 +1,5 @@
 # Event Manager Service
+<img width="1370" height="798" alt="image" src="https://github.com/user-attachments/assets/438c7d1d-ac91-47fe-83c0-3f506b1af7f6" />
 
 An independent event wallet, payment, and coupon platform. It supports multiple live events, participant wallet links, vendor PIN access, short-lived payment QR codes, optional participant approval, coupon redemption, immutable audit ledgers, and scheduled bulk actions.
 
