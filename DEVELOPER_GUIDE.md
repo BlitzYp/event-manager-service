@@ -86,12 +86,42 @@ event-manager-service/
 │   ├── package.json
 │   └── pnpm-lock.yaml
 ├── .env.example
+├── .env.backend.example        # Shared Oracle deployment environment template
+├── docker-compose.backend.yml  # Oracle backend only; Vercel serves the frontend
+├── docker-compose.dev.yml      # Local bind mounts and automatic reload
+├── docker-compose.oracle.yml   # Full-stack Oracle deployment
 ├── docker-compose.yml
+├── event-manager-oracle-devops-commands.md
 ├── Makefile
 └── README.md
 ```
 
 ## 3. Docker: build and run
+
+### Compose file selection
+
+Choose the deployment definition before running any lifecycle command:
+
+| Purpose | Compose invocation | Environment | Compose project |
+| --- | --- | --- | --- |
+| Local production-style stack | `docker compose` | `.env` | `event-manager-service` |
+| Local development | `docker compose -f docker-compose.yml -f docker-compose.dev.yml` | `.env` | `event-manager-service` |
+| Full-stack Oracle VM | `docker compose --env-file .env.backend -f docker-compose.oracle.yml` | `.env.backend` | `event-manager-production` |
+| Oracle backend with Vercel | `docker compose --env-file .env.backend -f docker-compose.backend.yml` | `.env.backend` | `event-manager-backend` |
+
+`docker-compose.dev.yml` is an override and must be combined with the base local file.
+The two Oracle files are standalone alternatives, not overrides. Their project names create
+different containers, networks, and named volumes, so using the wrong file can appear to
+produce a new, empty database. Never add `-v` while correcting a Compose-file mistake.
+
+The backend-only production stack does not contain the Next.js `web` service. Vercel serves
+the browser application, while Caddy exposes FastAPI. Its `api`, `scheduler`, and `migrate`
+services share `event-manager-backend:latest`; after pulling code, rebuild the image and
+recreate the long-running Python containers. A plain `restart` continues running the old
+image. The complete production deployment and recovery procedures are in
+[`event-manager-oracle-devops-commands.md`](event-manager-oracle-devops-commands.md).
+Create `.env.backend` from `.env.backend.example`; `CADDY_ADDRESS` belongs there rather than
+in the local `.env`, because only the backend-only Oracle stack runs Caddy with that value.
 
 ### First-time setup
 

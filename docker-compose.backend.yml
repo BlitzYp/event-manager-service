@@ -1,18 +1,19 @@
-name: event-manager-production
+name: event-manager-backend
 
 x-logging: &default-logging
   driver: json-file
   options:
     max-size: "10m"
-    max-file: "5"
+    max-file: "3"
 
 x-backend: &backend
+  image: event-manager-backend:latest
   build:
     context: ./backend
   environment:
-    DATABASE_URL: ${DATABASE_URL:?Set DATABASE_URL in .env.backend}
-    APP_SECRET_KEY: ${APP_SECRET_KEY:?Set APP_SECRET_KEY in .env.backend}
-    PUBLIC_APP_URL: ${PUBLIC_APP_URL:?Set PUBLIC_APP_URL in .env.backend}
+    DATABASE_URL: ${DATABASE_URL:?Set DATABASE_URL}
+    APP_SECRET_KEY: ${APP_SECRET_KEY:?Set APP_SECRET_KEY}
+    PUBLIC_APP_URL: ${PUBLIC_APP_URL:?Set PUBLIC_APP_URL}
     COOKIE_SECURE: ${COOKIE_SECURE:-true}
     ADMIN_SESSION_HOURS: ${ADMIN_SESSION_HOURS:-12}
     VENDOR_SESSION_IDLE_MINUTES: ${VENDOR_SESSION_IDLE_MINUTES:-30}
@@ -27,13 +28,18 @@ services:
     image: mysql:8.4
     restart: unless-stopped
     environment:
-      MYSQL_DATABASE: ${MYSQL_DATABASE:?Set MYSQL_DATABASE in .env.backend}
-      MYSQL_USER: ${MYSQL_USER:?Set MYSQL_USER in .env.backend}
-      MYSQL_PASSWORD: ${MYSQL_PASSWORD:?Set MYSQL_PASSWORD in .env.backend}
-      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?Set MYSQL_ROOT_PASSWORD in .env.backend}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:?Set MYSQL_DATABASE}
+      MYSQL_USER: ${MYSQL_USER:?Set MYSQL_USER}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:?Set MYSQL_PASSWORD}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?Set MYSQL_ROOT_PASSWORD}
     command:
       - --character-set-server=utf8mb4
       - --collation-server=utf8mb4_unicode_ci
+      - --innodb-buffer-pool-size=128M
+      - --innodb-log-buffer-size=8M
+      - --max-connections=30
+      - --table-open-cache=200
+      - --performance-schema=OFF
     volumes:
       - mysql-data:/var/lib/mysql
     healthcheck:
@@ -42,8 +48,8 @@ services:
         - mysqladmin ping -h 127.0.0.1 -u root -p$$MYSQL_ROOT_PASSWORD --silent
       interval: 10s
       timeout: 5s
-      retries: 20
-      start_period: 30s
+      retries: 30
+      start_period: 45s
     logging: *default-logging
     networks:
       - database
@@ -77,8 +83,8 @@ services:
         - import urllib.request; urllib.request.urlopen('http://localhost:8000/health')
       interval: 15s
       timeout: 5s
-      retries: 10
-      start_period: 20s
+      retries: 15
+      start_period: 30s
     networks:
       - application
       - database
@@ -91,34 +97,6 @@ services:
       migrate:
         condition: service_completed_successfully
 
-  web:
-    build:
-      context: ./frontend
-      args:
-        API_INTERNAL_URL: http://api:8000
-        NEXT_PUBLIC_API_BASE: /api/v1
-    restart: unless-stopped
-    environment:
-      API_INTERNAL_URL: http://api:8000
-      NEXT_PUBLIC_API_BASE: /api/v1
-    depends_on:
-      api:
-        condition: service_healthy
-    healthcheck:
-      test:
-        - CMD
-        - node
-        - -e
-        - fetch('http://localhost:3000/health/api').then(r => { if (!r.ok) process.exit(1) }).catch(() => process.exit(1))
-      interval: 15s
-      timeout: 5s
-      retries: 10
-      start_period: 20s
-    logging: *default-logging
-    networks:
-      - edge
-      - application
-
   caddy:
     image: caddy:2-alpine
     restart: unless-stopped
@@ -126,22 +104,22 @@ services:
       - caddy
       - reverse-proxy
       - --from
-      - ${CADDY_ADDRESS:?Set CADDY_ADDRESS in .env.backend}
+      - ${CADDY_ADDRESS:?Set CADDY_ADDRESS}
       - --to
-      - web:3000
+      - api:8000
     depends_on:
-      web:
+      api:
         condition: service_healthy
     ports:
       - "80:80"
       - "443:443"
-      - "443:443/udp"
     volumes:
       - caddy-data:/data
       - caddy-config:/config
     logging: *default-logging
     networks:
       - edge
+      - application
 
 volumes:
   mysql-data:

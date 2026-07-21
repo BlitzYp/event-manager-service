@@ -5,6 +5,11 @@ An independent event wallet, payment, and coupon platform. It supports multiple 
 
 For architecture diagrams, model relationships, common functions, and detailed Windows/Linux development commands, see [`DEVELOPER_GUIDE.md`](DEVELOPER_GUIDE.md).
 
+## NOTICE
+```text
+I am broke and don't want to pay for an expensive server lmao. So right now the vm option I am using is the weakest vm config possible in Oracle free tier.
+```
+
 ## Architecture
 
 - **API:** Python 3.12, FastAPI, SQLAlchemy 2, Alembic
@@ -123,6 +128,33 @@ docker compose -f docker-compose.yml -f docker-compose.dev.yml down
 
 The normal `docker compose up` command remains the production-style local build and does not enable hot reload.
 
+## Choosing a Docker Compose file
+
+The repository has separate Compose definitions for local development and two different
+Oracle deployment layouts. Use only the file or file combination for the intended
+environment:
+
+| Environment | Compose files | Environment file | Includes frontend? |
+| --- | --- | --- | --- |
+| Local, production-style | `docker-compose.yml` | `.env` | Yes |
+| Local development with reload | `docker-compose.yml` + `docker-compose.dev.yml` | `.env` | Yes |
+| Oracle VM, full stack | `docker-compose.oracle.yml` | `.env.backend` | Yes |
+| Oracle VM backend + Vercel frontend | `docker-compose.backend.yml` | `.env.backend` | No |
+
+The Oracle definitions are independent deployments with different Compose project names
+and named volumes. Do not switch between them for an existing production database. In
+particular, every backend-only production command must include:
+
+```bash
+docker compose --env-file .env.backend -f docker-compose.backend.yml ...
+```
+
+The backend-only services share `event-manager-backend:latest`. A `git pull` or
+`docker compose restart` does not put new source code into existing containers; rebuild the
+image, run migrations, and recreate the API and scheduler. See the
+[Oracle backend DevOps runbook](event-manager-oracle-devops-commands.md) for deployment,
+backup, restore, logging, and recovery commands.
+
 ## Participant onboarding
 
 Admins can create one participant or import a UTF-8 CSV. The required columns are `participant_code,name`; optional columns are `group,email`.
@@ -193,7 +225,10 @@ The OpenAPI document is available at `/api/openapi.json`; generate frontend type
 
 ### Oracle Cloud VM deployment
 
-The repository includes `docker-compose.oracle.yml` for a single Oracle Cloud VM. It runs
+#### Full-stack Oracle deployment
+
+Use `docker-compose.oracle.yml` when the frontend, backend, scheduler, and database all run
+on one Oracle VM. It runs
 Caddy as the only public service, keeps the API and MySQL on private Docker networks, runs
 Alembic as a one-shot migration service, and persists MySQL and Caddy certificate data in
 named volumes.
@@ -201,11 +236,13 @@ named volumes.
 On the VM, clone the repository and create the production environment file:
 
 ```bash
-cp .env.oracle.example .env.oracle
-chmod 600 .env.oracle
+cp .env.backend.example .env.backend
+chmod 600 .env.backend
 ```
 
-Replace every placeholder in `.env.oracle`. Point the domain's DNS A record at the VM's
+Replace every placeholder in `.env.backend`. For this full-stack layout,
+`CADDY_ADDRESS` is the application hostname and `PUBLIC_APP_URL` is its HTTPS origin. Point
+the domain's DNS A record at the VM's
 public IP, and allow inbound TCP ports 80 and 443 plus UDP port 443 in both the Oracle Cloud
 network security rules and the VM firewall. Do not open ports 3000, 8000, 3306, or 3307.
 For a temporary test without a domain, set `CADDY_ADDRESS=http://PUBLIC_IP`, set
@@ -215,15 +252,15 @@ before using real participant or vendor credentials.
 Build and start the production stack:
 
 ```bash
-docker compose --env-file .env.oracle -f docker-compose.oracle.yml up --build -d
-docker compose --env-file .env.oracle -f docker-compose.oracle.yml ps
+docker compose --env-file .env.backend -f docker-compose.oracle.yml up --build -d
+docker compose --env-file .env.backend -f docker-compose.oracle.yml ps
 curl --fail-with-body https://events.example.com/health/api
 ```
 
 Create the initial administrator interactively:
 
 ```bash
-docker compose --env-file .env.oracle -f docker-compose.oracle.yml run --rm api \
+docker compose --env-file .env.backend -f docker-compose.oracle.yml run --rm api \
   python -m app.cli create-admin
 ```
 
@@ -231,3 +268,31 @@ For subsequent deployments, pull the desired revision and repeat the `up --build
 command. The migration service must finish successfully before the API, scheduler, and web
 services start. Back up MySQL separately and regularly; the `mysql-data` volume is persistent
 but is not a backup.
+
+#### Backend-only Oracle deployment with Vercel
+
+Use `docker-compose.backend.yml` when Vercel hosts the Next.js frontend and Oracle runs only
+MySQL, migrations, FastAPI, the scheduler, and Caddy. Caddy forwards the public backend
+hostname directly to FastAPI; this stack does not serve `/admin` or `/wallet` pages.
+
+Create the VM-owned environment file from the committed template, replace every placeholder,
+and keep it private:
+
+```bash
+cp .env.backend.example .env.backend
+chmod 600 .env.backend
+```
+
+`CADDY_ADDRESS` is the public backend API hostname, while `PUBLIC_APP_URL` is the separately
+deployed Vercel frontend origin. The resulting `.env.backend` is intentionally ignored by
+Git. All commands must specify both the environment file and Compose file:
+
+```bash
+docker compose --env-file .env.backend -f docker-compose.backend.yml config --quiet
+docker compose --env-file .env.backend -f docker-compose.backend.yml ps -a
+```
+
+For updates, do not rely on `restart`: the Python code is copied into the backend image at
+build time. Follow [section 4 of the production runbook](event-manager-oracle-devops-commands.md#4-routine-safe-deployment)
+to build one image at a time, run Alembic, and force-recreate the API and scheduler. Deploy
+frontend changes separately through Vercel.

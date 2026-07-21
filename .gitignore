@@ -1,5 +1,7 @@
 .env
-.env.oracle
+.env.*
+!.env.example
+!.env.*.example
 __pycache__/
 *.py[cod]
 .pytest_cache/
@@ -8,6 +10,7 @@ __pycache__/
 .venv/
 backend/.coverage
 frontend/node_modules/
+frontend/.pnpm-store/
 frontend/.next/
 frontend/playwright-report/
 frontend/test-results/

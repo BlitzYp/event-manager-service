@@ -9,6 +9,8 @@ This file applies to the entire repository. Keep it concise; use `README.md` for
 - `frontend/`: Node.js 22+, Next.js App Router, React, TypeScript, Vitest, Playwright.
 - `docker-compose.yml`: production-style local stack (no source-code reload).
 - `docker-compose.dev.yml`: development override with bind mounts and polling reloaders.
+- `docker-compose.oracle.yml`: full-stack Oracle VM deployment, including the web service.
+- `docker-compose.backend.yml`: production backend-only Oracle deployment; frontend is on Vercel.
 - Services: MySQL 8.4, API, scheduler, and web.
 
 ## Domain and security invariants
@@ -52,6 +54,17 @@ matching `ARG`/`ENV` declarations in `frontend/Dockerfile`.
 
 The frontend currently has no `public/` directory. Do not add an unconditional Docker
 `COPY /app/public` unless that directory is added to the repository.
+
+## Production Compose files
+
+Do not mix the two Oracle deployment definitions. Both use `.env.backend`, but
+`docker-compose.oracle.yml` uses project `event-manager-production` while
+`docker-compose.backend.yml` uses project `event-manager-backend`; they create different
+named volumes. Every Oracle command must include `--env-file .env.backend` and the intended
+`-f` argument. Pulling Git changes or restarting containers does not load new backend code:
+build the image, run `migrate`, and recreate the Python services. See
+`event-manager-oracle-devops-commands.md` for the backend-only safe deployment sequence.
+Never commit `.env.backend` or delete a production MySQL volume.
 
 ## Validation commands
 
