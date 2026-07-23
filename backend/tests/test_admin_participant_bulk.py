@@ -2,7 +2,7 @@ from datetime import timedelta
 from uuid import uuid4
 
 import pytest
-from sqlalchemy import select
+from sqlalchemy import delete, select
 
 from app.database import SessionLocal, utcnow
 from app.dependencies import require_vendor
@@ -16,9 +16,11 @@ from app.models import (
     Event,
     EventMode,
     EventStatus,
+    MoneyTransaction,
     Participant,
     ScheduledAction,
     ScheduleType,
+    TransactionStatus,
     Vendor,
     VendorSession,
     Wallet,
@@ -28,10 +30,86 @@ from app.routers.admin import (
     delete_participant,
     list_participants,
     update_event,
+    update_event_approval,
 )
-from app.schemas import ActionWalletScope, EventUpdate
+from app.schemas import ActionWalletScope, EventApprovalUpdate, EventUpdate
 from app.security import token_hash
-from app.services import create_participant_with_wallet, issue_coupons
+from app.services import create_participant_with_wallet, create_vendor_payment, issue_coupons
+
+
+def test_event_approval_setting_controls_vendor_payment_settlement() -> None:
+    db = SessionLocal()
+    event_id: int | None = None
+    try:
+        suffix = uuid4().hex[:10]
+        event = Event(
+            code=f"approval-{suffix}",
+            name="Approval setting test",
+            status=EventStatus.active,
+            mode=EventMode.money,
+            currency="EUR",
+            default_balance_minor=1000,
+            approval_required=True,
+        )
+        db.add(event)
+        db.flush()
+        event_id = event.id
+        participant, wallet, _ = create_participant_with_wallet(
+            db, event, "P-APPROVAL", "Approval participant", None, None
+        )
+        vendor = Vendor(
+            event_id=event.id,
+            name="Approval vendor",
+            pin_lookup=f"lookup-{suffix}",
+            pin_hash="unused",
+            active=True,
+        )
+        db.add(vendor)
+        db.commit()
+
+        pending = create_vendor_payment(
+            db,
+            vendor,
+            100,
+            f"pending-{suffix}",
+            participant_code=participant.participant_code,
+            wallet_id=wallet.id,
+        )
+        assert pending.status == TransactionStatus.pending
+        db.refresh(wallet)
+        assert wallet.balance_minor == 1000
+
+        update_event_approval(
+            event.id,
+            EventApprovalUpdate(approval_required=False),
+            AdminUser(id=999_999, email="test@example.invalid", password_hash="unused"),
+            db,
+        )
+        db.refresh(event)
+        assert event.approval_required is False
+
+        approved = create_vendor_payment(
+            db,
+            vendor,
+            100,
+            f"approved-{suffix}",
+            participant_code=participant.participant_code,
+            wallet_id=wallet.id,
+        )
+        assert approved.status == TransactionStatus.approved
+        db.refresh(wallet)
+        assert wallet.balance_minor == 900
+    finally:
+        db.rollback()
+        if event_id is not None:
+            db.execute(
+                delete(MoneyTransaction).where(MoneyTransaction.event_id == event_id)
+            )
+            event = db.get(Event, event_id)
+            if event:
+                db.delete(event)
+                db.commit()
+        db.close()
 
 
 def test_archiving_event_revokes_and_rejects_vendor_sessions() -> None:

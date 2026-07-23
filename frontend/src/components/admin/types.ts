@@ -34,6 +34,7 @@ export type Participant = {
 export type Vendor = {
   id: number;
   name: string;
+  contract_number?: string | null;
   active: boolean;
   last_login_at?: string;
 };
@@ -84,6 +85,61 @@ export type ScheduledAction = {
   schedule_start?: string;
   schedule_end?: string;
   schedule_time?: string;
+  auto_delete: boolean;
   enabled: boolean;
   completed_at?: string;
+  run_count: number;
+  email_template_id?: number | null;
+  email_subject?: string | null;
+};
+
+export type EmailBlock = {
+  type: string;
+  data: {
+    props?: Record<string, unknown>;
+    style?: Record<string, unknown>;
+    childrenIds?: string[];
+    [key: string]: unknown;
+  };
+};
+
+export type EmailDocument = Record<string, EmailBlock>;
+
+export type EmailTemplate = {
+  id: number;
+  event_id: number;
+  name: string;
+  subject: string;
+  version: number;
+  archived_at?: string | null;
+  created_by: string;
+  updated_by: string;
+  created_at: string;
+  updated_at: string;
+  document?: EmailDocument;
+  rendered_html?: string;
+};
+
+export type EmailAsset = {
+  id: number;
+  original_name: string;
+  mime_type: string;
+  file_size: number;
+  width: number;
+  height: number;
+  created_at: string;
+  url: string;
+};
+
+export type EmailDelivery = {
+  id: number;
+  template_id?: number | null;
+  participant_id?: number | null;
+  recipient_email: string;
+  recipient_name?: string | null;
+  subject: string;
+  status: "sent" | "failed" | "simulated";
+  error?: string | null;
+  created_at: string;
+  sent_at?: string | null;
 };

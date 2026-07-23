@@ -18,6 +18,7 @@ import { ApiFailure, api, money } from "@/lib/api";
 type Vendor = {
   id: number;
   name: string;
+  contract_number?: string | null;
   event_id: number;
   event_name: string;
 };
@@ -410,10 +411,10 @@ function VendorConsole({
             <div className="p-6 pt-2">
               <span className="badge">Coupon</span>
               <h2 className="mt-3 text-3xl font-bold">{coupon.name}</h2>
-              <p className="mt-1 text-black/50">
-                Issued to {coupon.participant_name}
-              </p>
               <p className="mt-2 font-mono text-sm font-semibold">{coupon.code}</p>
+              <p className="mt-3 text-sm text-black/50">
+                Vendor: {vendor.name} · Contract: {vendor.contract_number || "—"}
+              </p>
               <div className="alert-warning my-6 text-sm">
                 A redeemed coupon cannot be used again.
               </div>

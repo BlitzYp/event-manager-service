@@ -27,7 +27,7 @@ export function VendorsPanel({ event, csrf }: { event: Event; csrf: string }) {
     try {
       await api(
         `/admin/events/${event.id}/vendors`,
-        { method: "POST", body: JSON.stringify({ name: form.get("name"), pin: form.get("pin") }) },
+        { method: "POST", body: JSON.stringify({ name: form.get("name"), contract_number: form.get("contract_number") || null, pin: form.get("pin") }) },
         csrf,
       );
       formElement.reset();
@@ -47,6 +47,7 @@ export function VendorsPanel({ event, csrf }: { event: Event; csrf: string }) {
         method: "PUT",
         body: JSON.stringify({
           name: form.get("name"),
+          contract_number: form.get("contract_number") || null,
           active: form.get("active") === "on",
           pin: form.get("pin") || null,
         }),
@@ -72,7 +73,7 @@ export function VendorsPanel({ event, csrf }: { event: Event; csrf: string }) {
     try {
       await api(`/admin/events/${event.id}/vendors/${vendor.id}`, {
         method: "PUT",
-        body: JSON.stringify({ name: vendor.name, active: !vendor.active, pin: null }),
+        body: JSON.stringify({ name: vendor.name, contract_number: vendor.contract_number, active: !vendor.active, pin: null }),
       }, csrf);
       await load();
     } catch (failure) {
@@ -85,6 +86,7 @@ export function VendorsPanel({ event, csrf }: { event: Event; csrf: string }) {
       <form onSubmit={submit} className="card p-5">
         <h3 className="text-xl font-semibold">Add vendor</h3>
         <Field label="Vendor name"><input className="input" name="name" required /></Field>
+        <Field label="Contract number"><input className="input" name="contract_number" /></Field>
         <Field label="Six-digit PIN">
           <input className="input" name="pin" inputMode="numeric" pattern="\d{6}" maxLength={6} required />
         </Field>
@@ -96,6 +98,7 @@ export function VendorsPanel({ event, csrf }: { event: Event; csrf: string }) {
           <form onSubmit={saveVendor} className="card mb-4 grid gap-3 p-5 sm:grid-cols-2">
             <h3 className="text-lg font-semibold sm:col-span-2">Edit vendor</h3>
             <Field label="Vendor name"><input className="input" name="name" defaultValue={editing.name} required /></Field>
+            <Field label="Contract number"><input className="input" name="contract_number" defaultValue={editing.contract_number ?? ""} /></Field>
             <Field label="New PIN (optional)"><input className="input" name="pin" inputMode="numeric" pattern="\d{6}" maxLength={6} /></Field>
             <label className="flex items-center gap-2 text-sm"><input type="checkbox" name="active" defaultChecked={editing.active} /> Active</label>
             <div className="flex gap-2"><button className="button">Save</button><button type="button" className="button-secondary" onClick={() => setEditing(null)}>Cancel</button></div>
@@ -108,6 +111,7 @@ export function VendorsPanel({ event, csrf }: { event: Event; csrf: string }) {
               <strong>{vendor.name}</strong>
               <StatusBadge status={vendor.active ? "active" : "disabled"} />
             </div>
+            <p className="mt-1 text-sm text-black/55">Contract: {vendor.contract_number || "—"}</p>
             <p className="mt-2 text-xs text-black/45">
               Last login: {vendor.last_login_at ? new Date(vendor.last_login_at).toLocaleString() : "Never"}
             </p>

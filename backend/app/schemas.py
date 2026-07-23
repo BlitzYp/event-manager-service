@@ -70,6 +70,10 @@ class EventUpdate(EventCreate):
     pass
 
 
+class EventApprovalUpdate(ApiModel):
+    approval_required: bool
+
+
 class ParticipantCreate(ApiModel):
     participant_code: str = Field(min_length=1, max_length=100)
     name: str = Field(min_length=1, max_length=255)
@@ -88,12 +92,14 @@ class ParticipantUpdate(ApiModel):
 class VendorCreate(ApiModel):
     name: str = Field(min_length=1, max_length=255)
     pin: str = Field(pattern=r"^\d{6}$")
+    contract_number: str | None = Field(default=None, max_length=255)
 
 
 class VendorUpdate(ApiModel):
     name: str = Field(min_length=1, max_length=255)
     active: bool = True
     pin: str | None = Field(default=None, pattern=r"^\d{6}$")
+    contract_number: str | None = Field(default=None, max_length=255)
 
 
 class VendorLogin(ApiModel):
@@ -150,6 +156,62 @@ class CouponRedeem(ApiModel):
         return self
 
 
+class EmailTemplateCreate(ApiModel):
+    name: str = Field(min_length=1, max_length=255)
+    subject: str = Field(min_length=1, max_length=255)
+    document: dict[str, Any]
+    rendered_html: str = Field(min_length=1, max_length=2_000_000)
+
+
+class EmailTemplateUpdate(EmailTemplateCreate):
+    version: int = Field(ge=1)
+
+
+class EmailTemplateArchive(ApiModel):
+    archived: bool
+
+
+class EmailSendRequest(ApiModel):
+    source: Literal["template", "basic"] = "template"
+    template_id: int | None = None
+    subject: str | None = Field(default=None, min_length=1, max_length=255)
+    body: str | None = Field(default=None, max_length=100_000)
+    participant_ids: list[int] = Field(default_factory=list, max_length=1_000)
+    all_participants: bool = False
+    group: str | None = Field(default=None, max_length=255)
+    recipient_email: EmailStr | None = None
+    recipient_name: str | None = Field(default=None, max_length=255)
+
+    @model_validator(mode="after")
+    def require_one_recipient_scope(self) -> "EmailSendRequest":
+        if self.source == "template":
+            if self.template_id is None:
+                raise ValueError("Choose an email template.")
+            if self.body is not None:
+                raise ValueError("Template emails cannot include a basic message body.")
+        else:
+            if self.template_id is not None:
+                raise ValueError("Basic emails cannot include a template.")
+            if not (self.subject or "").strip():
+                raise ValueError("Basic emails require a subject.")
+            if not (self.body or "").strip():
+                raise ValueError("Basic emails require a message.")
+        scopes = sum(
+            [
+                bool(self.participant_ids),
+                self.all_participants,
+                self.group is not None,
+                self.recipient_email is not None,
+            ]
+        )
+        if scopes != 1:
+            raise ValueError(
+                "Choose exactly one recipient scope: selected participants, all participants, "
+                "a group, or one email address."
+            )
+        return self
+
+
 class ActionCreate(ApiModel):
     name: str = Field(min_length=1, max_length=255)
     action_type: ActionType
@@ -160,6 +222,8 @@ class ActionCreate(ApiModel):
     schedule_time: time | None = None
     auto_delete: bool = False
     excluded_wallet_ids: list[int] = []
+    email_template_id: int | None = None
+    email_subject: str | None = Field(default=None, max_length=255)
 
     @model_validator(mode="after")
     def validate_daily_schedule(self) -> "ActionCreate":
@@ -170,6 +234,11 @@ class ActionCreate(ApiModel):
                 )
             if self.schedule_end < self.schedule_start:
                 raise ValueError("Schedule end date cannot be before its start date.")
+        if self.action_type == ActionType.send_email and not self.email_template_id:
+            raise ValueError("Email actions require an email template.")
+        if self.action_type != ActionType.send_email:
+            self.email_template_id = None
+            self.email_subject = None
         return self
 
 

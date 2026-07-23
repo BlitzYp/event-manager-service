@@ -1,7 +1,7 @@
 # Event Manager Service
 <img width="1370" height="798" alt="image" src="https://github.com/user-attachments/assets/438c7d1d-ac91-47fe-83c0-3f506b1af7f6" />
 
-An independent event wallet, payment, and coupon platform. It supports multiple live events, participant wallet links, vendor PIN access, short-lived payment QR codes, optional participant approval, coupon redemption, immutable audit ledgers, and scheduled bulk actions.
+An independent event wallet, payment, coupon, and participant-email platform. It supports multiple live events, participant wallet links, vendor PIN access, short-lived payment QR codes, optional participant approval, coupon redemption, reusable visual email templates, single/bulk email delivery, immutable audit ledgers, and scheduled bulk actions.
 
 For architecture diagrams, model relationships, common functions, and detailed Windows/Linux development commands, see [`DEVELOPER_GUIDE.md`](DEVELOPER_GUIDE.md).
 
@@ -83,6 +83,23 @@ Optionally create development-only sample data:
 ```bash
 docker compose run --rm api python -m app.cli seed-demo
 ```
+
+### Email setup
+
+The admin **Emails** area uses the MIT-licensed EmailBuilder.js editor for reusable,
+event-scoped templates. Templates support participant/event placeholders, uploaded images,
+single recipients, participant selections, groups, all participants, and scheduled email
+actions. Delivery attempts are recorded without storing rendered message bodies or raw wallet
+tokens. Immediate sends can use either a saved visual template or a basic text message. Both
+modes can be previewed before sending; basic messages include placeholder insertion controls
+for participant names and `{{public_wallet}}`. Both the visual template editor and basic
+composer support bold, italic, underline, and text-color formatting.
+
+Local development defaults to simulation. Set `EMAIL_TEST_RECIPIENT` to route at most
+`DEVELOPMENT_EMAIL_DELIVERY_LIMIT` messages from each send to one safe inbox. Production
+delivery requires `ENVIRONMENT=production` plus the `SMTP_*` settings. If a template uses an
+uploaded image, `PUBLIC_APP_URL` must be the public HTTPS frontend origin so email clients can
+load the opaque asset URL.
 
 Useful lifecycle commands on either operating system:
 

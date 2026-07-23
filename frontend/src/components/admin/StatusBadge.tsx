@@ -8,6 +8,9 @@ import {
   CircleOff,
   Clock3,
   FileClock,
+  FlaskConical,
+  MailCheck,
+  MailX,
   PauseCircle,
   Undo2,
   XCircle,
@@ -30,6 +33,9 @@ const statusMeta = {
   available: { className: "status-badge--active", Icon: TicketCheck },
   redeemed: { className: "status-badge--completed", Icon: TicketCheck },
   removed: { className: "status-badge--cancelled", Icon: CircleOff },
+  sent: { className: "status-badge--sent", Icon: MailCheck },
+  failed: { className: "status-badge--failed", Icon: MailX },
+  simulated: { className: "status-badge--simulated", Icon: FlaskConical },
 } as const;
 
 export function StatusBadge({ status, label }: { status: string; label?: string }) {

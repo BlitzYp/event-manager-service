@@ -193,6 +193,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/events/{event_id}/approval": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Update Event Approval */
+        patch: operations["update_event_approval_api_v1_admin_events__event_id__approval_patch"];
+        trace?: never;
+    };
     "/api/v1/admin/events/{event_id}/participants": {
         parameters: {
             query?: never;
@@ -557,6 +574,41 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/events/{event_id}/actions/{action_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Update Action */
+        put: operations["update_action_api_v1_admin_events__event_id__actions__action_id__put"];
+        post?: never;
+        /** Delete Action */
+        delete: operations["delete_action_api_v1_admin_events__event_id__actions__action_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/events/{event_id}/actions/{action_id}/enabled": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Set Action Enabled */
+        patch: operations["set_action_enabled_api_v1_admin_events__event_id__actions__action_id__enabled_patch"];
+        trace?: never;
+    };
     "/api/v1/admin/events/{event_id}/actions/{action_id}/run": {
         parameters: {
             query?: never;
@@ -585,6 +637,128 @@ export interface paths {
         put?: never;
         /** Apply Action Wallet Scope */
         post: operations["apply_action_wallet_scope_api_v1_admin_events__event_id__actions__action_id__wallet_scope_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/events/{event_id}/email-templates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Templates */
+        get: operations["list_templates_api_v1_admin_events__event_id__email_templates_get"];
+        put?: never;
+        /** Create Template */
+        post: operations["create_template_api_v1_admin_events__event_id__email_templates_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/events/{event_id}/email-templates/{template_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Template */
+        get: operations["get_template_api_v1_admin_events__event_id__email_templates__template_id__get"];
+        /** Update Template */
+        put: operations["update_template_api_v1_admin_events__event_id__email_templates__template_id__put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/events/{event_id}/email-templates/{template_id}/archive": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Archive Template */
+        patch: operations["archive_template_api_v1_admin_events__event_id__email_templates__template_id__archive_patch"];
+        trace?: never;
+    };
+    "/api/v1/admin/events/{event_id}/email-assets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Assets */
+        get: operations["list_assets_api_v1_admin_events__event_id__email_assets_get"];
+        put?: never;
+        /** Upload Asset */
+        post: operations["upload_asset_api_v1_admin_events__event_id__email_assets_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/events/{event_id}/email-assets/{asset_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Asset */
+        delete: operations["delete_asset_api_v1_admin_events__event_id__email_assets__asset_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/events/{event_id}/emails/send": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Send Email */
+        post: operations["send_email_api_v1_admin_events__event_id__emails_send_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/events/{event_id}/email-deliveries": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Deliveries */
+        get: operations["list_deliveries_api_v1_admin_events__event_id__email_deliveries_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -810,12 +984,16 @@ export interface components {
              * @default []
              */
             excluded_wallet_ids: number[];
+            /** Email Template Id */
+            email_template_id?: number | null;
+            /** Email Subject */
+            email_subject?: string | null;
         };
         /**
          * ActionType
          * @enum {string}
          */
-        ActionType: "create_wallets" | "activate_wallets" | "deactivate_wallets" | "delete_wallets" | "issue_coupons" | "refill_coupons" | "disable_coupons" | "enable_coupons";
+        ActionType: "create_wallets" | "activate_wallets" | "deactivate_wallets" | "delete_wallets" | "issue_coupons" | "refill_coupons" | "disable_coupons" | "enable_coupons" | "send_email";
         /** ActionWalletScope */
         ActionWalletScope: {
             /**
@@ -849,6 +1027,14 @@ export interface components {
         };
         /** Body_import_participants_api_v1_admin_events__event_id__participants_import_post */
         Body_import_participants_api_v1_admin_events__event_id__participants_import_post: {
+            /**
+             * File
+             * Format: binary
+             */
+            file: string;
+        };
+        /** Body_upload_asset_api_v1_admin_events__event_id__email_assets_post */
+        Body_upload_asset_api_v1_admin_events__event_id__email_assets_post: {
             /**
              * File
              * Format: binary
@@ -912,6 +1098,72 @@ export interface components {
         DecisionRequest: {
             /** Decision */
             decision: string;
+        };
+        /** EmailSendRequest */
+        EmailSendRequest: {
+            /**
+             * Source
+             * @default template
+             * @enum {string}
+             */
+            source: "template" | "basic";
+            /** Template Id */
+            template_id?: number | null;
+            /** Subject */
+            subject?: string | null;
+            /** Body */
+            body?: string | null;
+            /** Participant Ids */
+            participant_ids?: number[];
+            /**
+             * All Participants
+             * @default false
+             */
+            all_participants: boolean;
+            /** Group */
+            group?: string | null;
+            /** Recipient Email */
+            recipient_email?: string | null;
+            /** Recipient Name */
+            recipient_name?: string | null;
+        };
+        /** EmailTemplateArchive */
+        EmailTemplateArchive: {
+            /** Archived */
+            archived: boolean;
+        };
+        /** EmailTemplateCreate */
+        EmailTemplateCreate: {
+            /** Name */
+            name: string;
+            /** Subject */
+            subject: string;
+            /** Document */
+            document: {
+                [key: string]: unknown;
+            };
+            /** Rendered Html */
+            rendered_html: string;
+        };
+        /** EmailTemplateUpdate */
+        EmailTemplateUpdate: {
+            /** Name */
+            name: string;
+            /** Subject */
+            subject: string;
+            /** Document */
+            document: {
+                [key: string]: unknown;
+            };
+            /** Rendered Html */
+            rendered_html: string;
+            /** Version */
+            version: number;
+        };
+        /** EventApprovalUpdate */
+        EventApprovalUpdate: {
+            /** Approval Required */
+            approval_required: boolean;
         };
         /** EventCreate */
         EventCreate: {
@@ -1072,6 +1324,8 @@ export interface components {
             name: string;
             /** Pin */
             pin: string;
+            /** Contract Number */
+            contract_number?: string | null;
         };
         /** VendorLogin */
         VendorLogin: {
@@ -1091,6 +1345,8 @@ export interface components {
             active: boolean;
             /** Pin */
             pin?: string | null;
+            /** Contract Number */
+            contract_number?: string | null;
         };
     };
     responses: never;
@@ -1552,6 +1808,47 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_event_approval_api_v1_admin_events__event_id__approval_patch: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-csrf-token"?: string | null;
+            };
+            path: {
+                event_id: number;
+            };
+            cookie?: {
+                admin_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EventApprovalUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
             };
             /** @description Validation Error */
             422: {
@@ -2661,6 +2958,122 @@ export interface operations {
             };
         };
     };
+    update_action_api_v1_admin_events__event_id__actions__action_id__put: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-csrf-token"?: string | null;
+            };
+            path: {
+                event_id: number;
+                action_id: number;
+            };
+            cookie?: {
+                admin_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ActionCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_action_api_v1_admin_events__event_id__actions__action_id__delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-csrf-token"?: string | null;
+            };
+            path: {
+                event_id: number;
+                action_id: number;
+            };
+            cookie?: {
+                admin_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    set_action_enabled_api_v1_admin_events__event_id__actions__action_id__enabled_patch: {
+        parameters: {
+            query: {
+                enabled: boolean;
+            };
+            header?: {
+                "x-csrf-token"?: string | null;
+            };
+            path: {
+                event_id: number;
+                action_id: number;
+            };
+            cookie?: {
+                admin_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     run_action_now_api_v1_admin_events__event_id__actions__action_id__run_post: {
         parameters: {
             query?: never;
@@ -2718,6 +3131,390 @@ export interface operations {
                 "application/json": components["schemas"]["ActionWalletScope"];
             };
         };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_templates_api_v1_admin_events__event_id__email_templates_get: {
+        parameters: {
+            query?: {
+                include_archived?: boolean;
+            };
+            header?: never;
+            path: {
+                event_id: number;
+            };
+            cookie?: {
+                admin_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_template_api_v1_admin_events__event_id__email_templates_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-csrf-token"?: string | null;
+            };
+            path: {
+                event_id: number;
+            };
+            cookie?: {
+                admin_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EmailTemplateCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_template_api_v1_admin_events__event_id__email_templates__template_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                event_id: number;
+                template_id: number;
+            };
+            cookie?: {
+                admin_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_template_api_v1_admin_events__event_id__email_templates__template_id__put: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-csrf-token"?: string | null;
+            };
+            path: {
+                event_id: number;
+                template_id: number;
+            };
+            cookie?: {
+                admin_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EmailTemplateUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    archive_template_api_v1_admin_events__event_id__email_templates__template_id__archive_patch: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-csrf-token"?: string | null;
+            };
+            path: {
+                event_id: number;
+                template_id: number;
+            };
+            cookie?: {
+                admin_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EmailTemplateArchive"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_assets_api_v1_admin_events__event_id__email_assets_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                event_id: number;
+            };
+            cookie?: {
+                admin_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    upload_asset_api_v1_admin_events__event_id__email_assets_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-csrf-token"?: string | null;
+            };
+            path: {
+                event_id: number;
+            };
+            cookie?: {
+                admin_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_upload_asset_api_v1_admin_events__event_id__email_assets_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_asset_api_v1_admin_events__event_id__email_assets__asset_id__delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-csrf-token"?: string | null;
+            };
+            path: {
+                event_id: number;
+                asset_id: number;
+            };
+            cookie?: {
+                admin_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    send_email_api_v1_admin_events__event_id__emails_send_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-csrf-token"?: string | null;
+            };
+            path: {
+                event_id: number;
+            };
+            cookie?: {
+                admin_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EmailSendRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_deliveries_api_v1_admin_events__event_id__email_deliveries_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                event_id: number;
+            };
+            cookie?: {
+                admin_session?: string | null;
+            };
+        };
+        requestBody?: never;
         responses: {
             /** @description Successful Response */
             200: {

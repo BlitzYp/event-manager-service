@@ -50,6 +50,8 @@ export default function ParticipantWallet() {
   }, [token]);
   useEffect(() => {
     void load();
+    const refresh = window.setInterval(() => void load(), 5_000);
+    return () => window.clearInterval(refresh);
   }, [load]);
   useEffect(() => {
     if (ttl <= 0) return;

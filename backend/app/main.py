@@ -6,7 +6,7 @@ from sqlalchemy import text
 from .config import settings
 from .database import engine
 from .errors import ApiError, api_error_handler, validation_error_handler
-from .routers import admin, auth, participant, vendor
+from .routers import admin, admin_email, auth, email, participant, vendor
 
 app = FastAPI(
     title=settings.app_name,
@@ -28,8 +28,10 @@ app.add_middleware(
 
 app.include_router(auth.router, prefix="/api/v1")
 app.include_router(admin.router, prefix="/api/v1")
+app.include_router(admin_email.router, prefix="/api/v1")
 app.include_router(participant.router, prefix="/api/v1")
 app.include_router(vendor.router, prefix="/api/v1")
+app.include_router(email.router, prefix="/api/v1")
 
 
 @app.get("/health", include_in_schema=False)

@@ -22,6 +22,11 @@ This file applies to the entire repository. Keep it concise; use `README.md` for
 - Treat wallet URLs, session tokens, passwords, PINs, `.env`, and QR payloads as secrets.
 - Raw wallet/session tokens are not persisted. Passwords and PINs use Argon2id; PIN lookup
   uses keyed HMAC before verification.
+- Email sends create a separate hashed wallet token per delivered participant. Development
+  sends remain simulated or test-recipient-limited; managed images require a public HTTPS
+  `PUBLIC_APP_URL`, and basic rich-text HTML must stay server-sanitized.
+- Scheduled-action run history is audit data. Actions with run history may be disabled or
+  edited but must not be deleted.
 - Add an Alembic migration for every database schema change.
 
 ## Development stack

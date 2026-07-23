@@ -7,6 +7,7 @@ import {
   ExternalLink,
   Filter,
   KeyRound,
+  Mail,
   Plus,
   Power,
   RotateCcw,
@@ -17,6 +18,7 @@ import {
 } from "lucide-react";
 import { api, money } from "@/lib/api";
 import { Empty, Field } from "./AdminUi";
+import { ParticipantEmailDialog } from "./ParticipantEmailDialog";
 import { StatusBadge } from "./StatusBadge";
 import type { Event, Participant, ScheduledAction } from "./types";
 
@@ -43,6 +45,7 @@ export function ParticipantsPanel({ event, csrf }: { event: Event; csrf: string 
   const [bulkScope, setBulkScope] = useState<"selected" | "filtered">("filtered");
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
+  const [emailRecipients, setEmailRecipients] = useState<Participant[]>();
   const bulkRef = useRef<HTMLDivElement>(null);
 
   const load = useCallback(async () => {
@@ -360,8 +363,30 @@ export function ParticipantsPanel({ event, csrf }: { event: Event; csrf: string 
             >
               <RotateCcw size={17} />
             </button>
+            <button
+              className="button-secondary whitespace-nowrap px-3"
+              type="button"
+              title={items.some((participant) => participant.email) ? `Email all ${items.length} filtered participants` : "No filtered participants have an email address"}
+              disabled={!items.some((participant) => participant.email)}
+              onClick={() => setEmailRecipients(items)}
+            >
+              <Mail size={17} /> Email
+            </button>
           </div>
         </form>
+
+        {emailRecipients && (
+          <ParticipantEmailDialog
+            event={event}
+            csrf={csrf}
+            recipients={emailRecipients}
+            onClose={() => setEmailRecipients(undefined)}
+            onSent={(message) => {
+              setEmailRecipients(undefined);
+              setNotice(message);
+            }}
+          />
+        )}
 
         {editing && (
           <form onSubmit={saveParticipant} className="card mb-4 grid gap-3 p-5 md:grid-cols-2">
@@ -432,6 +457,16 @@ export function ParticipantsPanel({ event, csrf }: { event: Event; csrf: string 
                   <td>
                     <div className="flex items-center gap-1">
                       <button className="button-secondary min-h-9 px-2" type="button" title="Edit participant" onClick={() => setEditing(participant)}><Edit3 size={15} /></button>
+                      <button
+                        className="button-secondary min-h-9 px-2"
+                        type="button"
+                        title={participant.email ? `Send email to ${participant.name}` : "Participant has no email address"}
+                        aria-label={participant.email ? `Send email to ${participant.name}` : `Cannot email ${participant.name}: no email address`}
+                        disabled={!participant.email}
+                        onClick={() => setEmailRecipients([participant])}
+                      >
+                        <Mail size={15} />
+                      </button>
                       <button className="button-secondary min-h-9 px-2" type="button" title="Open wallet preview" onClick={() => void openWallet(participant)}><ExternalLink size={15} /></button>
                       <button className="button-secondary min-h-9 px-2" type="button" title="Participant automation" onClick={() => openIndividualAction(participant)}><Zap size={15} /></button>
                       <button className="button-secondary min-h-9 px-2" type="button" title="Rotate wallet link" onClick={() => void rotateWalletLink(participant)}><KeyRound size={15} /></button>

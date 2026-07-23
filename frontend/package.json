@@ -16,6 +16,7 @@
     "generate:api": "openapi-typescript http://localhost:8000/api/openapi.json -o src/lib/api.generated.ts"
   },
   "dependencies": {
+    "@usewaypoint/email-builder": "0.0.9",
     "@vercel/analytics": "^2.0.1",
     "@zxing/browser": "0.1.5",
     "lucide-react": "0.468.0",

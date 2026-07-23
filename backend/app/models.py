@@ -12,11 +12,13 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     Integer,
+    LargeBinary,
     String,
     Text,
     Time,
     UniqueConstraint,
 )
+from sqlalchemy.dialects import mysql
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .database import Base, utcnow
@@ -66,11 +68,18 @@ class ActionType(str, enum.Enum):
     refill_coupons = "refill_coupons"
     disable_coupons = "disable_coupons"
     enable_coupons = "enable_coupons"
+    send_email = "send_email"
 
 
 class ScheduleType(str, enum.Enum):
     once = "once"
     daily = "daily"
+
+
+class EmailDeliveryStatus(str, enum.Enum):
+    sent = "sent"
+    failed = "failed"
+    simulated = "simulated"
 
 
 class IdMixin:
@@ -164,6 +173,7 @@ class Vendor(IdMixin, TimestampMixin, Base):
     __table_args__ = (UniqueConstraint("event_id", "pin_lookup"),)
     event_id: Mapped[int] = mapped_column(ForeignKey("events.id", ondelete="CASCADE"), index=True)
     name: Mapped[str] = mapped_column(String(255))
+    contract_number: Mapped[str | None] = mapped_column(String(255))
     pin_lookup: Mapped[str] = mapped_column(String(64))
     pin_hash: Mapped[str] = mapped_column(String(255))
     active: Mapped[bool] = mapped_column(Boolean, default=True)
@@ -283,11 +293,81 @@ class CouponAudit(IdMixin, Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, index=True)
 
 
+class EmailTemplate(IdMixin, TimestampMixin, Base):
+    __tablename__ = "email_templates"
+    __table_args__ = (
+        UniqueConstraint("event_id", "name", "archived_at", name="uq_email_template_name"),
+    )
+    event_id: Mapped[int] = mapped_column(
+        ForeignKey("events.id", ondelete="CASCADE"), index=True
+    )
+    name: Mapped[str] = mapped_column(String(255))
+    subject: Mapped[str] = mapped_column(String(255))
+    document_json: Mapped[str] = mapped_column(Text().with_variant(mysql.MEDIUMTEXT(), "mysql"))
+    rendered_html: Mapped[str] = mapped_column(Text().with_variant(mysql.MEDIUMTEXT(), "mysql"))
+    version: Mapped[int] = mapped_column(Integer, default=1)
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime, index=True)
+    created_by: Mapped[str] = mapped_column(String(255))
+    updated_by: Mapped[str] = mapped_column(String(255))
+    archived_by: Mapped[str | None] = mapped_column(String(255))
+
+
+class EmailAsset(IdMixin, Base):
+    __tablename__ = "email_assets"
+    event_id: Mapped[int] = mapped_column(
+        ForeignKey("events.id", ondelete="CASCADE"), index=True
+    )
+    public_token: Mapped[str] = mapped_column(String(64), unique=True)
+    original_name: Mapped[str] = mapped_column(String(255))
+    mime_type: Mapped[str] = mapped_column(String(50))
+    file_size: Mapped[int] = mapped_column(Integer)
+    width: Mapped[int] = mapped_column(Integer)
+    height: Mapped[int] = mapped_column(Integer)
+    content: Mapped[bytes] = mapped_column(
+        LargeBinary().with_variant(mysql.MEDIUMBLOB(), "mysql")
+    )
+    uploaded_by: Mapped[str] = mapped_column(String(255))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, index=True)
+
+
+class EmailDelivery(IdMixin, Base):
+    __tablename__ = "email_deliveries"
+    __table_args__ = (
+        Index("ix_email_delivery_event_created", "event_id", "created_at"),
+    )
+    event_id: Mapped[int] = mapped_column(
+        ForeignKey("events.id", ondelete="RESTRICT"), index=True
+    )
+    template_id: Mapped[int | None] = mapped_column(
+        ForeignKey("email_templates.id", ondelete="SET NULL"), index=True
+    )
+    participant_id: Mapped[int | None] = mapped_column(
+        ForeignKey("participants.id", ondelete="SET NULL"), index=True
+    )
+    recipient_email: Mapped[str] = mapped_column(String(320))
+    recipient_name: Mapped[str | None] = mapped_column(String(255))
+    subject: Mapped[str] = mapped_column(String(255))
+    status: Mapped[EmailDeliveryStatus] = mapped_column(
+        Enum(EmailDeliveryStatus, native_enum=False), index=True
+    )
+    error: Mapped[str | None] = mapped_column(Text)
+    created_by: Mapped[str] = mapped_column(String(255))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, index=True)
+    sent_at: Mapped[datetime | None] = mapped_column(DateTime)
+
+
 class ScheduledAction(IdMixin, TimestampMixin, Base):
     __tablename__ = "scheduled_actions"
     event_id: Mapped[int] = mapped_column(ForeignKey("events.id", ondelete="CASCADE"), index=True)
     name: Mapped[str] = mapped_column(String(255))
     action_type: Mapped[ActionType] = mapped_column(Enum(ActionType, native_enum=False))
+    email_template_id: Mapped[int | None] = mapped_column(
+        ForeignKey("email_templates.id", ondelete="SET NULL"), index=True
+    )
+    email_subject: Mapped[str | None] = mapped_column(String(255))
+    email_html: Mapped[str | None] = mapped_column(
+        Text().with_variant(mysql.MEDIUMTEXT(), "mysql")
+    )
     schedule_type: Mapped[ScheduleType] = mapped_column(Enum(ScheduleType, native_enum=False))
     execute_at: Mapped[datetime] = mapped_column(DateTime, index=True)
     schedule_start: Mapped[date | None] = mapped_column(Date)

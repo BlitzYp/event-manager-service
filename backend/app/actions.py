@@ -4,6 +4,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from .database import utcnow
+from .email_service import send_template_email
 from .models import (
     ActionType,
     ActionWalletOverride,
@@ -11,7 +12,11 @@ from .models import (
     CouponInstance,
     CouponStatus,
     CouponTemplate,
+    EmailDeliveryStatus,
+    EmailTemplate,
+    Event,
     MoneyTransaction,
+    Participant,
     PaymentQrGrant,
     ScheduledAction,
     ScheduledActionRun,
@@ -78,6 +83,7 @@ def execute_action(
         else target_wallet_ids(db, action)
     )
     affected = 0
+    run_success = True
     message = "No matching wallets."
     if action.action_type == ActionType.create_wallets:
         message = "Participants receive wallets when created; no missing wallets were found."
@@ -130,12 +136,64 @@ def execute_action(
             record_coupon_audit(db, coupon, target.value, actor)
         affected = len(coupon_rows)
         message = f"Updated {affected} coupons."
+    elif action.action_type == ActionType.send_email:
+        template = db.scalar(
+            select(EmailTemplate).where(
+                EmailTemplate.id == action.email_template_id,
+                EmailTemplate.event_id == action.event_id,
+                EmailTemplate.archived_at.is_(None),
+            )
+        )
+        event = db.get(Event, action.event_id)
+        if not template or not event:
+            run_success = False
+            message = "The configured email template is no longer available."
+        else:
+            participants = list(
+                db.scalars(
+                    select(Participant)
+                    .join(Wallet, Wallet.participant_id == Participant.id)
+                    .where(
+                        Participant.event_id == action.event_id,
+                        Wallet.id.in_(wallet_ids),
+                    )
+                    .order_by(Participant.name)
+                )
+            )
+            sent = failed = simulated = skipped = 0
+            delivery_number = 0
+            for participant in participants:
+                if not participant.email:
+                    skipped += 1
+                    continue
+                delivery = send_template_email(
+                    db,
+                    event=event,
+                    template=template,
+                    participant=participant,
+                    actor=actor,
+                    subject_override=action.email_subject,
+                    development_delivery_number=delivery_number,
+                )
+                delivery_number += 1
+                if delivery.status == EmailDeliveryStatus.sent:
+                    sent += 1
+                elif delivery.status == EmailDeliveryStatus.failed:
+                    failed += 1
+                else:
+                    simulated += 1
+            affected = sent
+            run_success = failed == 0
+            message = (
+                f"Emails sent: {sent}; simulated: {simulated}; "
+                f"without an email address: {skipped}; failed: {failed}."
+            )
     run = ScheduledActionRun(
         action_id=action.id,
         run_key=run_key,
         run_type=run_type,
         affected_count=affected,
-        success=True,
+        success=run_success,
         message=message,
         executed_by=actor,
     )

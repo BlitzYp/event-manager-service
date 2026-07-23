@@ -335,6 +335,12 @@ erDiagram
     SCHEDULED_ACTION ||--o{ SCHEDULED_ACTION_RUN : executes
 
     ADMIN_USER ||--o{ ADMIN_SESSION : authenticates
+
+    EVENT ||--o{ EMAIL_TEMPLATE : defines
+    EVENT ||--o{ EMAIL_ASSET : owns
+    EVENT ||--o{ EMAIL_DELIVERY : records
+    EMAIL_TEMPLATE o|--o{ EMAIL_DELIVERY : renders
+    PARTICIPANT o|--o{ EMAIL_DELIVERY : receives
 ```
 
 Important invariants:
@@ -462,6 +468,22 @@ These are the most useful functions to reuse rather than duplicating behavior:
 | `validate_participant_csv(content)` | Validates the complete CSV before any rows are imported |
 | `reference(prefix)` | Generates readable unique audit references |
 
+Email behavior is split between `email_service.py`, the email administration router, and
+EmailBuilder.js in the Next.js admin UI. Templates are event-scoped and use optimistic
+`version` checks. Uploaded images are validated, stored in MySQL, and exposed only through
+opaque immutable URLs. The supported placeholders are participant full/first/last name,
+participant code/email/group, event name/code, and `{{wallet_link}}`.
+`{{public_wallet}}` is accepted as an alias for `{{wallet_link}}`. Immediate sends may use a
+saved visual template or a sanitized basic rich-text body; both modes have a sample-data preview.
+Each delivered wallet link gets a new hashed access-token record; raw tokens are never
+persisted. Basic-message rich text is server-sanitized to a narrow set of formatting tags;
+scripts, event handlers, unsupported attributes, and non-color inline styles are discarded.
+
+Development email safeguards are intentional: without `EMAIL_TEST_RECIPIENT`, deliveries are
+simulated; with it, only `DEVELOPMENT_EMAIL_DELIVERY_LIMIT` messages per send reach the test
+inbox. Production requires `ENVIRONMENT=production` and SMTP configuration. Managed email
+images additionally require a public HTTPS `PUBLIC_APP_URL`.
+
 ### Security helpers — `backend/app/security.py`
 
 - `hash_password` / `verify_password`: Argon2id for administrator passwords and vendor PINs.
@@ -475,6 +497,10 @@ Do not log or persist raw passwords, PINs, session tokens, access links, or paym
 ### Scheduled actions — `backend/app/actions.py` and `jobs.py`
 
 `jobs.run_due()` obtains the MySQL advisory lock `event-manager-scheduler`, expires pending payments, selects due actions, and calls `execute_action()`. Each action run has an idempotent `run_key`.
+
+Administrators can edit and enable/disable automations. An automation may be deleted only
+before its first execution; once run history exists, disabling preserves the immutable audit
+trail.
 
 To test a single pass on Windows, Linux, or macOS:
 

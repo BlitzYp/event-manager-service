@@ -84,8 +84,15 @@ export function EventCreator({
           <Field label="Default balance">
             <input className="input" name="balance" type="number" min="0" step="0.01" defaultValue="50.00" />
           </Field>
-          <label className="flex items-center gap-2 text-sm font-semibold">
-            <input name="approval" type="checkbox" defaultChecked /> Participant approves payments
+          <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-black/15 bg-black/[0.02] p-3">
+            <input className="peer sr-only" name="approval" type="checkbox" defaultChecked />
+            <span className="relative mt-0.5 h-6 w-11 shrink-0 rounded-full bg-black/20 transition-colors after:absolute after:left-1 after:top-1 after:h-4 after:w-4 after:rounded-full after:bg-white after:shadow after:transition-transform peer-checked:bg-leaf-600 peer-checked:after:translate-x-5 peer-focus-visible:outline peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-leaf-600" />
+            <span>
+              <span className="block text-sm font-semibold">Require participant confirmation</span>
+              <span className="mt-0.5 block text-xs font-normal text-black/55">
+                Vendor transactions wait for the participant to approve them.
+              </span>
+            </span>
           </label>
           <div className={embedded ? "" : "md:col-span-2 flex justify-end gap-2"}>
             {!embedded && (

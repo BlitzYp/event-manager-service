@@ -92,6 +92,7 @@ def login(
         "vendor": {
             "id": vendor.id,
             "name": vendor.name,
+            "contract_number": vendor.contract_number,
             "event_id": vendor.event_id,
             "event_name": vendor.event.name,
         },
@@ -105,6 +106,7 @@ def me(vendor: Vendor = Depends(require_vendor)) -> dict:
         "vendor": {
             "id": vendor.id,
             "name": vendor.name,
+            "contract_number": vendor.contract_number,
             "event_id": vendor.event_id,
             "event_name": vendor.event.name,
         }
@@ -165,8 +167,18 @@ def lookup(
         if not coupon:
             raise ApiError(404, "item_unavailable", "QR code is invalid or unavailable.")
         template = db.get(CouponTemplate, coupon.template_id)
-        if not template or (template.vendor_id and template.vendor_id != vendor.id):
+        if not template:
             raise ApiError(404, "item_unavailable", "QR code is invalid or unavailable.")
+        if template.vendor_id and template.vendor_id != vendor.id:
+            raise ApiError(
+                403,
+                "coupon_vendor_forbidden",
+                "This coupon is not assigned to this vendor.",
+            )
+        if coupon.status == CouponStatus.redeemed:
+            raise ApiError(409, "coupon_already_redeemed", "This coupon has already been used.")
+        if coupon.status != CouponStatus.available:
+            raise ApiError(409, "coupon_inactive", "This coupon is not active.")
         return {
             "kind": "coupon",
             "coupon": {
@@ -273,15 +285,24 @@ def redeem_coupon(
         .where(CouponInstance.id == (coupon_id or 0), CouponInstance.event_id == vendor.event_id)
         .with_for_update()
     )
-    if not coupon or coupon.status != CouponStatus.available:
+    if not coupon:
         raise ApiError(409, "coupon_unavailable", "Coupon is invalid or unavailable.")
     template = db.get(CouponTemplate, coupon.template_id)
     wallet = db.scalar(select(Wallet).where(Wallet.id == coupon.wallet_id).with_for_update())
+    if coupon.status == CouponStatus.redeemed:
+        raise ApiError(409, "coupon_already_redeemed", "This coupon has already been used.")
+    if coupon.status != CouponStatus.available:
+        raise ApiError(409, "coupon_inactive", "This coupon is not active.")
+    if template and template.vendor_id and template.vendor_id != vendor.id:
+        raise ApiError(
+            403,
+            "coupon_vendor_forbidden",
+            "This coupon is not assigned to this vendor.",
+        )
     if (
         not template
         or not wallet
         or not wallet.enabled
-        or (template.vendor_id and template.vendor_id != vendor.id)
     ):
         raise ApiError(409, "coupon_unavailable", "Coupon is invalid or unavailable.")
     coupon.status = CouponStatus.redeemed

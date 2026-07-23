@@ -1,18 +1,19 @@
 "use client";
 
 import { useState } from "react";
-import { CalendarRange, CheckCircle2, Clock3, Download, ShieldCheck, Ticket, Users, WalletCards } from "lucide-react";
+import { CalendarRange, CheckCircle2, Clock3, Download, Mail, ShieldCheck, Ticket, Users, WalletCards } from "lucide-react";
 import { AccountsPanel } from "./AccountsPanel";
 import { ActionsPanel } from "./ActionsPanel";
 import { CouponsPanel } from "./CouponsPanel";
 import { EventsPanel } from "./EventsPanel";
+import { EmailsPanel } from "./EmailsPanel";
 import { ParticipantsPanel } from "./ParticipantsPanel";
 import { StatusBadge } from "./StatusBadge";
 import { TransactionsPanel } from "./TransactionsPanel";
 import type { Event } from "./types";
 import { VendorsPanel } from "./VendorsPanel";
 
-type Tab = "events" | "accounts" | "participants" | "vendors" | "coupons" | "actions" | "transactions";
+type Tab = "events" | "accounts" | "participants" | "vendors" | "coupons" | "emails" | "actions" | "transactions";
 
 const tabs = [
   ["events", "Events", CalendarRange],
@@ -20,6 +21,7 @@ const tabs = [
   ["participants", "Participants", Users],
   ["vendors", "Vendors", WalletCards],
   ["coupons", "Coupons", Ticket],
+  ["emails", "Emails", Mail],
   ["actions", "Automation", Clock3],
   ["transactions", "Transactions", Download],
 ] as const;
@@ -92,6 +94,7 @@ export function EventWorkspace({
       {tab === "participants" && event && <ParticipantsPanel event={event} csrf={csrf} />}
       {tab === "vendors" && event && <VendorsPanel event={event} csrf={csrf} />}
       {tab === "coupons" && event && <CouponsPanel event={event} csrf={csrf} />}
+      {tab === "emails" && event && <EmailsPanel event={event} csrf={csrf} />}
       {tab === "actions" && event && <ActionsPanel event={event} csrf={csrf} />}
       {tab === "transactions" && event && <TransactionsPanel event={event} />}
     </section>

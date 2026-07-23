@@ -22,9 +22,13 @@ export function EventsPanel({
   onChanged: () => Promise<void>;
 }) {
   const [busyId, setBusyId] = useState<number>();
+  const [approvalOverride, setApprovalOverride] = useState<{
+    eventId: number;
+    value: boolean;
+  }>();
   const [error, setError] = useState("");
 
-  async function setStatus(event: Event, status: Event["status"]) {
+  async function updateEvent(event: Event, changes: Partial<Event>, errorMessage: string) {
     setBusyId(event.id);
     setError("");
     try {
@@ -35,21 +39,52 @@ export function EventsPanel({
           body: JSON.stringify({
             code: event.code,
             name: event.name,
-            status,
+            status: event.status,
             mode: event.mode,
             currency: event.currency,
             default_balance_minor: event.default_balance_minor,
             qr_ttl_seconds: event.qr_ttl_seconds,
             approval_required: event.approval_required,
             pending_payment_minutes: event.pending_payment_minutes,
+            ...changes,
           }),
         },
         csrf,
       );
       await onChanged();
     } catch (failure) {
-      setError(failure instanceof Error ? failure.message : "Could not update the event.");
+      setError(failure instanceof Error ? failure.message : errorMessage);
     } finally {
+      setBusyId(undefined);
+    }
+  }
+
+  async function setStatus(event: Event, status: Event["status"]) {
+    await updateEvent(event, { status }, "Could not update the event.");
+  }
+
+  async function setApprovalRequired(event: Event, approvalRequired: boolean) {
+    setApprovalOverride({ eventId: event.id, value: approvalRequired });
+    setBusyId(event.id);
+    setError("");
+    try {
+      await api(
+        `/admin/events/${event.id}/approval`,
+        {
+          method: "PATCH",
+          body: JSON.stringify({ approval_required: approvalRequired }),
+        },
+        csrf,
+      );
+      await onChanged();
+    } catch (failure) {
+      setError(
+        failure instanceof Error
+          ? failure.message
+          : "Could not update participant confirmation.",
+      );
+    } finally {
+      setApprovalOverride(undefined);
       setBusyId(undefined);
     }
   }
@@ -93,6 +128,7 @@ export function EventsPanel({
                 <tr>
                   <th>Event</th>
                   <th>Systems</th>
+                  <th>Payment confirmation</th>
                   <th>Status</th>
                   <th>Actions</th>
                 </tr>
@@ -109,6 +145,29 @@ export function EventsPanel({
                         <small className="text-black/45">{event.code}</small>
                       </td>
                       <td className="capitalize">{event.mode === "both" ? "Money + coupons" : event.mode}</td>
+                      <td>
+                        <label className="inline-flex cursor-pointer items-center gap-2">
+                          <input
+                            className="peer sr-only"
+                            type="checkbox"
+                            role="switch"
+                            checked={
+                              approvalOverride?.eventId === event.id
+                                ? approvalOverride.value
+                                : event.approval_required
+                            }
+                            disabled={busyId === event.id}
+                            onChange={(changeEvent) =>
+                              void setApprovalRequired(event, changeEvent.target.checked)
+                            }
+                            aria-label={`Require participant confirmation for ${event.name}`}
+                          />
+                          <span className="relative h-6 w-11 shrink-0 rounded-full bg-black/20 transition-colors after:absolute after:left-1 after:top-1 after:h-4 after:w-4 after:rounded-full after:bg-white after:shadow after:transition-transform peer-checked:bg-leaf-600 peer-checked:after:translate-x-5 peer-disabled:cursor-wait peer-disabled:opacity-60 peer-focus-visible:outline peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-leaf-600" />
+                          <span className="text-sm font-medium">
+                            {event.approval_required ? "Required" : "Automatic"}
+                          </span>
+                        </label>
+                      </td>
                       <td>
                         <StatusBadge status={event.status} />
                       </td>

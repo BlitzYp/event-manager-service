@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 
 export function Field({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <label className="mt-3 block flex-1 first:mt-0">
+    <label className="mt-3 block flex-1">
       <span className="label">{label}</span>
       {children}
     </label>
