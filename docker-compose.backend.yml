@@ -100,6 +100,7 @@ services:
     networks:
       - application
       - database
+      - outbound
 
   scheduler:
     <<: *backend
@@ -108,6 +109,9 @@ services:
     depends_on:
       migrate:
         condition: service_completed_successfully
+    networks:
+      - database
+      - outbound
 
   caddy:
     image: caddy:2-alpine
@@ -144,3 +148,4 @@ networks:
     internal: true
   database:
     internal: true
+  outbound:
