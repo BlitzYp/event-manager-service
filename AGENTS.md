@@ -68,8 +68,15 @@ Do not mix the two Oracle deployment definitions. Both use `.env.backend`, but
 named volumes. Every Oracle command must include `--env-file .env.backend` and the intended
 `-f` argument. Pulling Git changes or restarting containers does not load new backend code:
 build the image, run `migrate`, and recreate the Python services. See
-`event-manager-oracle-devops-commands.md` for the backend-only safe deployment sequence.
+`DEVOPS.md` for the backend-only safe deployment sequence.
 Never commit `.env.backend` or delete a production MySQL volume.
+
+Pushes to `main` run the approval-gated production workflow, so changes to
+`.github/workflows/ci.yml`, `docker-compose.backend.yml`, or `scripts/deploy-backend.sh`
+directly affect deployment safety. Preserve the immutable `BACKEND_IMAGE` digest path and
+its local `event-manager-backend:latest` default. Keep deployment keys and host keys in the
+GitHub `production` environment, never in the repository. Automated rollback is allowed
+only when Alembic versions did not change; never add an automatic migration downgrade.
 
 ## Validation commands
 

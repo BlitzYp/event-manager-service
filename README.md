@@ -169,7 +169,7 @@ docker compose --env-file .env.backend -f docker-compose.backend.yml ...
 The backend-only services share `event-manager-backend:latest`. A `git pull` or
 `docker compose restart` does not put new source code into existing containers; rebuild the
 image, run migrations, and recreate the API and scheduler. See the
-[Oracle backend DevOps runbook](event-manager-oracle-devops-commands.md) for deployment,
+[Oracle backend DevOps runbook](DEVOPS.md) for deployment,
 backup, restore, logging, and recovery commands.
 
 ## Participant onboarding
@@ -310,7 +310,22 @@ docker compose --env-file .env.backend -f docker-compose.backend.yml ps -a
 ```
 
 For updates, do not rely on `restart`: the Python code is copied into the backend image at
-build time. Follow [section 4 of the production runbook](event-manager-oracle-devops-commands.md#4-routine-safe-deployment)
+build time. Follow [section 4 of the production runbook](DEVOPS.md#4-routine-safe-deployment)
 for the approval-gated GitHub Actions deployment and its manual fallback. GitHub builds an
 immutable backend image, while the VM retains its own `.env.backend` and production data.
 Deploy frontend changes separately through Vercel.
+
+##### Automatic backend deployment setup
+
+Before the first automatic deployment, configure a GitHub environment named `production`
+with `main` as its deployment branch, a required reviewer, and **Prevent self-review**
+disabled. Add `DEPLOY_SSH_KEY` and `DEPLOY_KNOWN_HOSTS` as environment secrets and
+`DEPLOY_HOST`, `DEPLOY_USER`, and `DEPLOY_PATH` as environment variables. The dedicated SSH
+key must permit non-interactive access to the Oracle checkout, and the stored host key must
+be fingerprint-verified.
+
+After the first `publish-backend` job succeeds, make the
+`event-manager-service-backend` GHCR package public so Oracle can pull it without a registry
+token. Public package visibility cannot later be reverted to private. The complete commands,
+values, verification procedure, approval flow, and failure recovery steps are in the
+[Oracle backend DevOps runbook](DEVOPS.md#automated-deployment-through-github-actions).

@@ -68,7 +68,7 @@ From a computer that permits outbound SSH:
 
 ```bash
 chmod 600 ~/.ssh/ssh-key-oracle.key
-ssh -i ~/.ssh/ssh-key-oracle.key ubuntu@92.5.33.108
+ssh -i ~/.ssh/ssh-key-oracle.key ubuntu@YOUR_VM_IP
 ```
 
 Enter the repository and confirm its state:
@@ -181,40 +181,122 @@ separate gates: approval is not offered until the CI jobs pass.
 
 #### One-time GitHub configuration
 
-In the repository settings, create an environment named `production`:
+Complete the following setup from a trusted computer before approving the
+first deployment.
 
-- restrict deployment branches to `main`;
-- configure a required reviewer;
-- leave **Prevent self-review** disabled;
-- add `DEPLOY_SSH_KEY` and `DEPLOY_KNOWN_HOSTS` as environment secrets;
-- add `DEPLOY_HOST`, `DEPLOY_USER`, and `DEPLOY_PATH` as environment variables.
+First, confirm the existing VM checkout and Docker access:
 
-For the current VM layout, the variables normally resemble:
-
-```text
-DEPLOY_HOST=92.5.33.108
-DEPLOY_USER=ubuntu
-DEPLOY_PATH=/home/ubuntu/event-manager-service
+```bash
+ssh -i ~/.ssh/ssh-key-oracle.key ubuntu@YOUR_VM_IP
+cd ~/event-manager-service
+pwd
+git fetch origin main
+test -f .env.backend
+docker compose --env-file .env.backend -f docker-compose.backend.yml config --quiet
+exit
 ```
 
-Generate a dedicated deployment key on a trusted computer. Do not add a
+The expected deployment path is `/home/ubuntu/event-manager-service`. If `pwd`
+reports another path, use that exact absolute path for `DEPLOY_PATH`.
+
+Generate a dedicated deployment key on the trusted computer. Do not add a
 passphrase because the workflow is non-interactive:
 
 ```bash
-ssh-keygen -t ed25519 -f github-actions-oracle -C github-actions-event-manager
+ssh-keygen \
+  -t ed25519 \
+  -f ~/.ssh/github-actions-event-manager \
+  -C github-actions-event-manager
 ```
 
-Append `github-actions-oracle.pub` to the deployment user's
-`~/.ssh/authorized_keys` on the VM. Store the complete private key as
-`DEPLOY_SSH_KEY`. Capture the VM's SSH host key from a trusted network, compare
-its fingerprint with `/etc/ssh/ssh_host_ed25519_key.pub` on the VM, and store
-the verified `known_hosts` line as `DEPLOY_KNOWN_HOSTS`. Do not generate and
+Install only its public key on the VM:
+
+```bash
+ssh-copy-id \
+  -i ~/.ssh/github-actions-event-manager.pub \
+  -o IdentityFile=~/.ssh/ssh-key-oracle.key \
+  ubuntu@YOUR_VM_IP
+```
+
+Verify that this dedicated key can perform every required pre-flight check
+without a password prompt:
+
+```bash
+ssh \
+  -i ~/.ssh/github-actions-event-manager \
+  -o IdentitiesOnly=yes \
+  ubuntu@YOUR_VM_IP \
+  'cd /home/ubuntu/event-manager-service && git fetch origin main && test -f .env.backend && docker compose --env-file .env.backend -f docker-compose.backend.yml config --quiet'
+```
+
+The key only authenticates GitHub Actions to the VM. The VM checkout must also
+retain working access to its configured Git `origin`, because the deployment
+script fetches the exact `main` commit before deploying it.
+
+Next, capture the VM's SSH host key on the trusted computer:
+
+```bash
+ssh-keyscan -t ed25519 YOUR_VM_IP > oracle-known-hosts
+ssh-keygen -lf oracle-known-hosts
+```
+
+Through the existing trusted Oracle connection, obtain the authoritative
+fingerprint:
+
+```bash
+sudo ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub
+```
+
+The two fingerprints must match. Store the complete line from
+`oracle-known-hosts` in GitHub, not the fingerprint output. Do not generate and
 trust a new host key inside the workflow.
 
-The first successful `publish-backend` job creates the container package named
-`event-manager-service-backend`. Before approving that first deployment, open
-the package settings in GitHub and change its visibility to public. Production
-then pulls the image without storing a long-lived package token on the VM.
+Open the repository's **Settings → Environments** page and create or edit an
+environment named exactly `production`:
+
+- restrict deployment branches to `main`;
+- configure the repository owner as a required reviewer;
+- leave **Prevent self-review** disabled;
+- do not configure a wait timer.
+
+Add these environment secrets:
+
+| Secret | Value |
+| --- | --- |
+| `DEPLOY_SSH_KEY` | Complete private `~/.ssh/github-actions-event-manager` file, including its `BEGIN` and `END` lines |
+| `DEPLOY_KNOWN_HOSTS` | Complete verified line from `oracle-known-hosts` |
+
+Do not print the private key in logs, commit it, or copy `.env.backend` into
+GitHub. The database, application, and SMTP secrets remain exclusively on the
+VM.
+
+Add these environment variables:
+
+| Variable | Value |
+| --- | --- |
+| `DEPLOY_HOST` | Public IP address or DNS hostname of the Oracle VM |
+| `DEPLOY_USER` | `ubuntu` |
+| `DEPLOY_PATH` | `/home/ubuntu/event-manager-service`, or the exact path confirmed by `pwd` |
+
+#### First automated deployment
+
+Open the repository's **Actions** page and select the `CI and Deploy` run for
+the pushed `main` commit. The `publish-backend` job must succeed before a
+package or deployment can be configured.
+
+The first successful publish creates a personal GHCR container package named
+`event-manager-service-backend`. Open the package, select **Package settings**,
+then under **Danger Zone** select **Change visibility → Public**. GitHub does
+not allow a public package to be made private again. Public visibility applies
+only to the built backend image and lets the Oracle VM pull it without a
+long-lived registry token; it does not expose `.env.backend`, database data, or
+runtime secrets.
+
+If `deploy-production` already failed because configuration was missing, use
+**Re-run failed jobs** after completing the setup. When GitHub displays
+**Review deployments**, select `production` and choose **Approve and deploy**.
+Self-approval here is the manual deployment gate; it is separate from the
+automated backend, frontend, and deployment-configuration checks.
 
 #### Automated backup and rollback behavior
 

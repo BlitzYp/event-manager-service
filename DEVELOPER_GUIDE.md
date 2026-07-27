@@ -91,7 +91,11 @@ event-manager-service/
 ├── docker-compose.dev.yml      # Local bind mounts and automatic reload
 ├── docker-compose.oracle.yml   # Full-stack Oracle deployment
 ├── docker-compose.yml
-├── event-manager-oracle-devops-commands.md
+├── .github/workflows/ci.yml    # CI, immutable backend publishing, and approved deployment
+├── scripts/
+│   ├── deploy-backend.sh       # Exact-revision Oracle backend deployment
+│   └── test-deploy-backend.sh  # Mock deployment/rollback behavior tests
+├── DEVOPS.md                    # Oracle deployment setup, operation, and recovery
 ├── Makefile
 └── README.md
 ```
@@ -116,10 +120,22 @@ produce a new, empty database. Never add `-v` while correcting a Compose-file mi
 
 The backend-only production stack does not contain the Next.js `web` service. Vercel serves
 the browser application, while Caddy exposes FastAPI. Its `api`, `scheduler`, and `migrate`
-services share `event-manager-backend:latest`; after pulling code, rebuild the image and
-recreate the long-running Python containers. A plain `restart` continues running the old
-image. The complete production deployment and recovery procedures are in
-[`event-manager-oracle-devops-commands.md`](event-manager-oracle-devops-commands.md).
+services share one backend image. Manual deployments default to
+`event-manager-backend:latest`; automated deployments override `BACKEND_IMAGE` with an
+immutable GHCR digest.
+
+For pushes to `main`, GitHub Actions runs backend, frontend, and deployment-configuration
+checks, publishes an AMD64 backend image, and waits at the protected `production`
+environment. After manual approval, a GitHub-hosted runner sends the exact commit and image
+digest to `scripts/deploy-backend.sh` over verified SSH. The VM retains `.env.backend`,
+creates a MySQL dump when Alembic versions changed, migrates, recreates API and scheduler,
+and records state only after internal and public health checks pass. A no-migration health
+failure can restore the previous image automatically; migration failures require manual
+recovery and never run an automatic downgrade.
+
+A plain `restart` continues running the old image. The one-time GitHub environment, SSH,
+GHCR, production deployment, and recovery procedures are in
+[`DEVOPS.md`](DEVOPS.md).
 Create `.env.backend` from `.env.backend.example`; `CADDY_ADDRESS` belongs there rather than
 in the local `.env`, because only the backend-only Oracle stack runs Caddy with that value.
 
