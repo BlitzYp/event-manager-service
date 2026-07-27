@@ -160,11 +160,102 @@ This is the recommended deployment sequence for the 1 GB E2 VM. It builds one
 backend image, stops only the application processes during migration, and
 keeps MySQL running.
 
+### Automated deployment through GitHub Actions
+
+The `CI and Deploy` workflow is the normal production path:
+
+1. Backend and frontend checks must both pass for a push to `main`.
+2. GitHub builds an AMD64 backend image and publishes it to GHCR under the
+   commit SHA.
+3. The `deploy-production` job waits for approval in the GitHub `production`
+   environment.
+4. After approval, a GitHub-hosted runner connects over SSH and sends the
+   deployment script the exact commit SHA and immutable image digest.
+5. The VM checks out that commit, preserves its VM-owned `.env.backend`, and
+   deploys only with `docker-compose.backend.yml`.
+
+The person who pushed or merged the commit may approve the deployment. In the
+GitHub environment settings, add that person as a required reviewer and leave
+**Prevent self-review** disabled. Automated checks and manual approval are
+separate gates: approval is not offered until the CI jobs pass.
+
+#### One-time GitHub configuration
+
+In the repository settings, create an environment named `production`:
+
+- restrict deployment branches to `main`;
+- configure a required reviewer;
+- leave **Prevent self-review** disabled;
+- add `DEPLOY_SSH_KEY` and `DEPLOY_KNOWN_HOSTS` as environment secrets;
+- add `DEPLOY_HOST`, `DEPLOY_USER`, and `DEPLOY_PATH` as environment variables.
+
+For the current VM layout, the variables normally resemble:
+
+```text
+DEPLOY_HOST=92.5.33.108
+DEPLOY_USER=ubuntu
+DEPLOY_PATH=/home/ubuntu/event-manager-service
+```
+
+Generate a dedicated deployment key on a trusted computer. Do not add a
+passphrase because the workflow is non-interactive:
+
+```bash
+ssh-keygen -t ed25519 -f github-actions-oracle -C github-actions-event-manager
+```
+
+Append `github-actions-oracle.pub` to the deployment user's
+`~/.ssh/authorized_keys` on the VM. Store the complete private key as
+`DEPLOY_SSH_KEY`. Capture the VM's SSH host key from a trusted network, compare
+its fingerprint with `/etc/ssh/ssh_host_ed25519_key.pub` on the VM, and store
+the verified `known_hosts` line as `DEPLOY_KNOWN_HOSTS`. Do not generate and
+trust a new host key inside the workflow.
+
+The first successful `publish-backend` job creates the container package named
+`event-manager-service-backend`. Before approving that first deployment, open
+the package settings in GitHub and change its visibility to public. Production
+then pulls the image without storing a long-lived package token on the VM.
+
+#### Automated backup and rollback behavior
+
+The VM records the last verified commit and image digest in
+`.deployment/last-successful`. On the first automated deployment, or whenever
+files under `backend/alembic/versions` differ from the last successful commit,
+the script creates and verifies a logical MySQL dump under
+`.deployment/backups/` before stopping API or scheduler. It keeps the five
+newest automated dumps.
+
+These VM-local dumps are short-term deployment recovery points. They do not
+replace tested, off-VM backups.
+
+After migration, the workflow verifies:
+
+- API container health and scheduler process state;
+- Alembic `current` matches `heads`;
+- the public `https://CADDY_ADDRESS/health` endpoint succeeds.
+
+If verification fails and no migration changed, the script checks out and
+restarts the previous successful image automatically. If a migration changed
+or failed, it prints recent logs and stops for manual recovery. It never runs
+an automatic Alembic downgrade and never records a failed revision as
+successful.
+
+The automated checkout leaves the VM repository on a detached, exact commit.
+That is expected. A later automated deployment fetches and checks out its own
+exact commit. To return to the manual deployment procedure, switch back to
+`main` first:
+
+```bash
+git switch main
+git pull --ff-only
+```
+
 ### 4.1 Update and validate the source
 
 ```bash
 cd ~/event-manager-service
 git status --short
+git switch main
 git pull --ff-only
 git log -1 --oneline
 
@@ -587,6 +678,23 @@ docker compose --env-file .env.backend -f docker-compose.backend.yml run --rm mi
 docker compose --env-file .env.backend -f docker-compose.backend.yml \
   up -d --no-build api scheduler caddy
 ```
+
+For an automated deployment failure, first inspect the `deploy-production`
+job log. On the VM, inspect the recorded successful deployment and automated
+backups without printing `.env.backend`:
+
+```bash
+cd ~/event-manager-service
+cat .deployment/last-successful
+ls -lh .deployment/backups/
+docker compose --env-file .env.backend -f docker-compose.backend.yml ps -a
+docker compose --env-file .env.backend -f docker-compose.backend.yml \
+  logs --tail=200 migrate api scheduler
+```
+
+If migrations changed, use the recorded state, verified backup, application
+logs, and Alembic state to choose a forward fix or a tested restore. Do not
+blindly check out the previous application image or run `alembic downgrade`.
 
 ### Diagnose HTTPS when the API is healthy
 

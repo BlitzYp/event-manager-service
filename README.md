@@ -311,5 +311,6 @@ docker compose --env-file .env.backend -f docker-compose.backend.yml ps -a
 
 For updates, do not rely on `restart`: the Python code is copied into the backend image at
 build time. Follow [section 4 of the production runbook](event-manager-oracle-devops-commands.md#4-routine-safe-deployment)
-to build one image at a time, run Alembic, and force-recreate the API and scheduler. Deploy
-frontend changes separately through Vercel.
+for the approval-gated GitHub Actions deployment and its manual fallback. GitHub builds an
+immutable backend image, while the VM retains its own `.env.backend` and production data.
+Deploy frontend changes separately through Vercel.
