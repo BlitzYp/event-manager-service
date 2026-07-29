@@ -124,7 +124,7 @@ chmod 600 .env.backend
 Show only non-secret public settings:
 
 ```bash
-grep -E '^(CADDY_ADDRESS|PUBLIC_APP_URL|COOKIE_SECURE)=' .env.backend
+grep -E '^(CADDY_ADDRESS|PUBLIC_APP_URL|PUBLIC_API_URL|COOKIE_SECURE)=' .env.backend
 ```
 
 Validate environment interpolation and Compose syntax:
@@ -894,6 +894,7 @@ Set:
 
 ```dotenv
 PUBLIC_APP_URL=https://YOUR-PROJECT.vercel.app
+PUBLIC_API_URL=https://YOUR-BACKEND-HOST
 ```
 
 Validate and recreate the Python services so they receive the new value:

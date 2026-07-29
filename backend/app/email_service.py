@@ -63,6 +63,25 @@ SAFE_TEXT_COLOR_RE = re.compile(
 )
 
 
+def public_email_asset_origin() -> str:
+    return (settings.public_api_url or settings.public_app_url).rstrip("/")
+
+
+def public_email_asset_url(asset_id: int, token: str) -> str:
+    return f"{public_email_asset_origin()}/api/v1/email-assets/{asset_id}?token={token}"
+
+
+def _rebase_managed_asset_urls(source: str) -> str:
+    app_origin = settings.public_app_url.rstrip("/")
+    asset_origin = public_email_asset_origin()
+    if app_origin == asset_origin:
+        return source
+    return source.replace(
+        f"{app_origin}/api/v1/email-assets/",
+        f"{asset_origin}/api/v1/email-assets/",
+    )
+
+
 def validate_template_document(
     db: Session, event_id: int, document: dict[str, Any], rendered_html: str
 ) -> str:
@@ -139,12 +158,14 @@ def _validate_url(db: Session, event_id: int, value: str) -> None:
     if parsed.scheme not in {"http", "https"}:
         raise ApiError(422, "invalid_template_url", "Template links must use HTTP or HTTPS.")
     if "/api/v1/email-assets/" in parsed.path:
-        public = urlparse(settings.public_app_url)
-        if (
-            parsed.scheme.lower() != public.scheme.lower()
-            or parsed.hostname != public.hostname
-            or parsed.port != public.port
-        ):
+        allowed_origins = {
+            (public.scheme.lower(), public.hostname, public.port)
+            for public in (
+                urlparse(settings.public_app_url),
+                urlparse(public_email_asset_origin()),
+            )
+        }
+        if (parsed.scheme.lower(), parsed.hostname, parsed.port) not in allowed_origins:
             raise ApiError(
                 422,
                 "invalid_email_asset",
@@ -330,9 +351,10 @@ def send_template_email(
         bool(test_recipient)
         and development_delivery_number < settings.development_email_delivery_limit
     )
-    public_url = urlparse(settings.public_app_url)
+    public_url = urlparse(public_email_asset_origin())
     asset_error = None
     body_source = template.rendered_html if template else basic_email_html(basic_body or "")
+    body_source = _rebase_managed_asset_urls(body_source)
     if will_deliver and "/api/v1/email-assets/" in body_source:
         if public_url.scheme != "https" or (public_url.hostname or "").lower() in {
             "localhost",
@@ -340,7 +362,8 @@ def send_template_email(
             "::1",
         }:
             asset_error = (
-                "Templates with uploaded images require PUBLIC_APP_URL to be a public HTTPS URL."
+                "Templates with uploaded images require PUBLIC_API_URL (or PUBLIC_APP_URL) "
+                "to be a public HTTPS URL."
             )
     wallet_link = (
         create_email_wallet_link(db, participant)

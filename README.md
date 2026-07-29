@@ -98,8 +98,8 @@ composer support bold, italic, underline, and text-color formatting.
 Local development defaults to simulation. Set `EMAIL_TEST_RECIPIENT` to route at most
 `DEVELOPMENT_EMAIL_DELIVERY_LIMIT` messages from each send to one safe inbox. Production
 delivery requires `ENVIRONMENT=production` plus the `SMTP_*` settings. If a template uses an
-uploaded image, `PUBLIC_APP_URL` must be the public HTTPS frontend origin so email clients can
-load the opaque asset URL.
+uploaded image, `PUBLIC_API_URL` (falling back to `PUBLIC_APP_URL`) must be a public HTTPS
+origin that serves the backend so email clients can load the opaque asset URL.
 
 Useful lifecycle commands on either operating system:
 
@@ -300,9 +300,10 @@ cp .env.backend.example .env.backend
 chmod 600 .env.backend
 ```
 
-`CADDY_ADDRESS` is the public backend API hostname, while `PUBLIC_APP_URL` is the separately
-deployed Vercel frontend origin. The resulting `.env.backend` is intentionally ignored by
-Git. All commands must specify both the environment file and Compose file:
+`CADDY_ADDRESS` is the public backend API hostname, `PUBLIC_API_URL` is that hostname as an
+HTTPS origin, and `PUBLIC_APP_URL` is the separately deployed Vercel frontend origin. The
+resulting `.env.backend` is intentionally ignored by Git. All commands must specify both the
+environment file and Compose file:
 
 ```bash
 docker compose --env-file .env.backend -f docker-compose.backend.yml config --quiet

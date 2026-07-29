@@ -1,6 +1,13 @@
 import pytest
 
-from app.email_service import basic_email_html, render_template, validate_template_document
+from app.config import settings
+from app.email_service import (
+    _rebase_managed_asset_urls,
+    basic_email_html,
+    public_email_asset_url,
+    render_template,
+    validate_template_document,
+)
 from app.errors import ApiError
 from app.schemas import ActionCreate, EmailSendRequest
 
@@ -69,6 +76,19 @@ def test_email_action_requires_template() -> None:
             action_type="send_email",
             execute_at="2026-07-24T09:00:00Z",
         )
+
+
+def test_managed_email_assets_use_public_api_origin(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(settings, "public_app_url", "https://frontend.example.com")
+    monkeypatch.setattr(settings, "public_api_url", "https://api.example.com/")
+    token = "abcdefghijklmnopqrstuvwxyz"
+    old_url = f"https://frontend.example.com/api/v1/email-assets/7?token={token}"
+    new_url = f"https://api.example.com/api/v1/email-assets/7?token={token}"
+
+    assert public_email_asset_url(7, token) == new_url
+    assert _rebase_managed_asset_urls(f'<img src="{old_url}" alt="Image">') == (
+        f'<img src="{new_url}" alt="Image">'
+    )
 
 
 def test_template_document_rejects_broken_block_links() -> None:

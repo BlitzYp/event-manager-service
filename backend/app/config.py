@@ -11,6 +11,7 @@ class Settings(BaseSettings):
     database_url: str = "mysql+pymysql://event_manager:change-me@localhost:3307/event_manager"
     app_secret_key: str = Field("development-only-change-this-secret-key", min_length=32)
     public_app_url: str = "http://localhost:3000"
+    public_api_url: str | None = None
     cookie_secure: bool = False
     admin_session_hours: int = 12
     vendor_session_idle_minutes: int = 30

@@ -9,7 +9,11 @@ from sqlalchemy.orm import Session
 from ..config import settings
 from ..database import get_db, utcnow
 from ..dependencies import require_admin, require_admin_csrf, require_admin_event_access
-from ..email_service import send_template_email, validate_template_document
+from ..email_service import (
+    public_email_asset_url,
+    send_template_email,
+    validate_template_document,
+)
 from ..errors import ApiError
 from ..models import (
     AdminUser,
@@ -217,10 +221,7 @@ def asset_json(row: EmailAsset) -> dict:
         "width": row.width,
         "height": row.height,
         "created_at": row.created_at,
-        "url": (
-            f"{settings.public_app_url.rstrip('/')}/api/v1/email-assets/{row.id}"
-            f"?token={row.public_token}"
-        ),
+        "url": public_email_asset_url(row.id, row.public_token),
     }
 
 
