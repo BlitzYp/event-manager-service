@@ -18,3 +18,4 @@ frontend/test-results/
 *.log
 .DS_Store
 .deployment/
+.idea/
