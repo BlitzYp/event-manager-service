@@ -1,21 +1,18 @@
 import csv
 import io
-from datetime import date, datetime, time, timedelta
 from typing import Literal
 
 from fastapi import APIRouter, Cookie, Depends, File, Query, Response, UploadFile
-from openpyxl import Workbook
 from sqlalchemy import func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from ..actions import execute_action, record_coupon_audit
+from ..actions import record_coupon_audit
 from ..config import settings
 from ..database import get_db, utcnow
 from ..dependencies import require_admin, require_admin_csrf, require_admin_event_access
 from ..errors import ApiError
 from ..models import (
-    ActionType,
     ActionWalletOverride,
     AdminSession,
     AdminUser,
@@ -24,14 +21,11 @@ from ..models import (
     CouponStatus,
     CouponTemplate,
     EmailDelivery,
-    EmailTemplate,
     Event,
     EventStatus,
     MoneyTransaction,
     Participant,
     PaymentQrGrant,
-    ScheduledAction,
-    ScheduledActionRun,
     TransactionStatus,
     TransactionType,
     Vendor,
@@ -40,8 +34,6 @@ from ..models import (
     WalletAccessToken,
 )
 from ..schemas import (
-    ActionCreate,
-    ActionWalletScope,
     AdjustmentRequest,
     AdminAccountStatusUpdate,
     CouponIssueRequest,
@@ -68,38 +60,29 @@ from ..services import (
     rotate_wallet_token,
     validate_participant_csv,
 )
+from . import admin_actions, admin_reporting
+from .admin_common import event_json, get_event
+
+# Keep direct imports from app.routers.admin working while handlers live in focused modules.
+apply_action_wallet_scope = admin_actions.apply_action_wallet_scope
+coupon_audits = admin_reporting.coupon_audits
+create_action = admin_actions.create_action
+delete_action = admin_actions.delete_action
+export_transactions = admin_reporting.export_transactions
+ledger_rows = admin_reporting.ledger_rows
+list_actions = admin_actions.list_actions
+run_action_now = admin_actions.run_action_now
+set_action_enabled = admin_actions.set_action_enabled
+transaction_query = admin_reporting.transaction_query
+transactions = admin_reporting.transactions
+update_action = admin_actions.update_action
+validate_action_email_template = admin_actions.validate_action_email_template
 
 router = APIRouter(
     prefix="/admin",
     tags=["administration"],
     dependencies=[Depends(require_admin_event_access)],
 )
-
-
-def event_json(row: Event) -> dict:
-    return {
-        "id": row.id,
-        "code": row.code,
-        "name": row.name,
-        "status": row.status,
-        "mode": row.mode,
-        "currency": row.currency,
-        "default_balance_minor": row.default_balance_minor,
-        "qr_ttl_seconds": row.qr_ttl_seconds,
-        "approval_required": row.approval_required,
-        "pending_payment_minutes": row.pending_payment_minutes,
-        "created_at": row.created_at,
-    }
-
-
-def get_event(db: Session, event_id: int, lock: bool = False) -> Event:
-    query = select(Event).where(Event.id == event_id)
-    if lock:
-        query = query.with_for_update()
-    event = db.scalar(query)
-    if not event:
-        raise ApiError(404, "not_found", "Event was not found.")
-    return event
 
 
 def require_super_admin(admin: AdminUser) -> None:
@@ -151,9 +134,9 @@ def impersonate_admin(
     if target.id == admin.id or target.is_super_admin:
         raise ApiError(409, "invalid_impersonation", "Select a regular administrator account.")
     session = db.scalar(
-        select(AdminSession).where(
-            AdminSession.token_hash == token_hash(admin_session or "")
-        ).with_for_update()
+        select(AdminSession)
+        .where(AdminSession.token_hash == token_hash(admin_session or ""))
+        .with_for_update()
     )
     if not session:
         raise ApiError(401, "authentication_required", "Authentication required.")
@@ -193,9 +176,7 @@ def list_events(_: AdminUser = Depends(require_admin), db: Session = Depends(get
     if not _.is_super_admin:
         query = query.where(Event.admin_id == _.id)
     return {
-        "events": [
-            event_json(row) for row in db.scalars(query.order_by(Event.created_at.desc()))
-        ]
+        "events": [event_json(row) for row in db.scalars(query.order_by(Event.created_at.desc()))]
     }
 
 
@@ -805,11 +786,13 @@ def delete_vendor(
     if template_ids:
         coupons = list(
             db.scalars(
-                select(CouponInstance).where(
+                select(CouponInstance)
+                .where(
                     CouponInstance.event_id == event_id,
                     CouponInstance.template_id.in_(template_ids),
                     CouponInstance.status == CouponStatus.available,
-                ).with_for_update()
+                )
+                .with_for_update()
             )
         )
         for coupon in coupons:
@@ -901,9 +884,9 @@ def update_coupon_template(
     db: Session = Depends(get_db),
 ) -> dict:
     template = db.scalar(
-        select(CouponTemplate).where(
-            CouponTemplate.id == template_id, CouponTemplate.event_id == event_id
-        ).with_for_update()
+        select(CouponTemplate)
+        .where(CouponTemplate.id == template_id, CouponTemplate.event_id == event_id)
+        .with_for_update()
     )
     if not template:
         raise ApiError(404, "not_found", "Coupon was not found.")
@@ -921,11 +904,13 @@ def update_coupon_template(
         source = CouponStatus.disabled if payload.active else CouponStatus.available
         coupons = list(
             db.scalars(
-                select(CouponInstance).where(
+                select(CouponInstance)
+                .where(
                     CouponInstance.event_id == event_id,
                     CouponInstance.template_id == template_id,
                     CouponInstance.status == source,
-                ).with_for_update()
+                )
+                .with_for_update()
             )
         )
         for coupon in coupons:
@@ -951,9 +936,9 @@ def delete_coupon_template(
     db: Session = Depends(get_db),
 ) -> Response:
     template = db.scalar(
-        select(CouponTemplate).where(
-            CouponTemplate.id == template_id, CouponTemplate.event_id == event_id
-        ).with_for_update()
+        select(CouponTemplate)
+        .where(CouponTemplate.id == template_id, CouponTemplate.event_id == event_id)
+        .with_for_update()
     )
     if not template:
         raise ApiError(404, "not_found", "Coupon was not found.")
@@ -962,7 +947,8 @@ def delete_coupon_template(
     )
     if issued:
         raise ApiError(
-            409, "coupon_has_history",
+            409,
+            "coupon_has_history",
             "Issued coupons cannot be deleted; disable this coupon instead.",
         )
     db.delete(template)
@@ -979,9 +965,8 @@ def set_coupon_status(
 ) -> dict:
     query = select(CouponInstance).where(
         CouponInstance.event_id == event_id,
-        CouponInstance.status == (
-            CouponStatus.disabled if payload.enabled else CouponStatus.available
-        ),
+        CouponInstance.status
+        == (CouponStatus.disabled if payload.enabled else CouponStatus.available),
     )
     if payload.template_id is not None:
         query = query.where(CouponInstance.template_id == payload.template_id)
@@ -1041,10 +1026,12 @@ def set_individual_coupon_status(
     db: Session = Depends(get_db),
 ) -> dict:
     coupon = db.scalar(
-        select(CouponInstance).where(
+        select(CouponInstance)
+        .where(
             CouponInstance.id == coupon_id,
             CouponInstance.event_id == event_id,
-        ).with_for_update()
+        )
+        .with_for_update()
     )
     if not coupon:
         raise ApiError(404, "not_found", "Coupon was not found.")
@@ -1088,536 +1075,5 @@ def issue_event_coupons(
     return {"issued": count}
 
 
-@router.get("/events/{event_id}/transactions")
-def transactions(
-    event_id: int,
-    status: TransactionStatus | None = None,
-    transaction_type: TransactionType | None = Query(default=None, alias="type"),
-    vendor_id: int | None = None,
-    date_from: date | None = None,
-    date_to: date | None = None,
-    search: str = "",
-    _: AdminUser = Depends(require_admin),
-    db: Session = Depends(get_db),
-) -> dict:
-    get_event(db, event_id)
-    query = transaction_query(
-        event_id,
-        status=status,
-        transaction_type=transaction_type,
-        vendor_id=vendor_id,
-        date_from=date_from,
-        date_to=date_to,
-        search=search,
-    )
-    rows = db.scalars(query.order_by(MoneyTransaction.created_at.desc()).limit(500))
-    return {
-        "transactions": [
-            {
-                "id": r.id,
-                "reference": r.reference,
-                "type": r.type,
-                "status": r.status,
-                "amount_minor": r.amount_minor,
-                "participant_code": r.participant_code,
-                "participant_name": r.participant_name,
-                "group": r.group_name,
-                "vendor_id": r.vendor_id,
-                "vendor_name": r.vendor_name,
-                "created_at": r.created_at,
-            }
-            for r in rows
-        ]
-    }
-
-
-def transaction_query(
-    event_id: int,
-    *,
-    status: TransactionStatus | None = None,
-    transaction_type: TransactionType | None = None,
-    vendor_id: int | None = None,
-    date_from: date | None = None,
-    date_to: date | None = None,
-    search: str = "",
-):
-    query = select(MoneyTransaction).where(MoneyTransaction.event_id == event_id)
-    if status:
-        query = query.where(MoneyTransaction.status == status)
-    if transaction_type:
-        query = query.where(MoneyTransaction.type == transaction_type)
-    if vendor_id:
-        query = query.where(MoneyTransaction.vendor_id == vendor_id)
-    if date_from:
-        query = query.where(MoneyTransaction.created_at >= datetime.combine(date_from, time.min))
-    if date_to:
-        query = query.where(
-            MoneyTransaction.created_at < datetime.combine(date_to + timedelta(days=1), time.min)
-        )
-    if search:
-        term = f"%{search}%"
-        query = query.where(
-            or_(
-                MoneyTransaction.participant_name.like(term),
-                MoneyTransaction.participant_code.like(term),
-                MoneyTransaction.group_name.like(term),
-                MoneyTransaction.reference.like(term),
-                MoneyTransaction.vendor_name.like(term),
-            )
-        )
-    return query
-
-
-@router.get("/events/{event_id}/coupon-audits")
-def coupon_audits(
-    event_id: int,
-    vendor_id: int | None = None,
-    date_from: date | None = None,
-    date_to: date | None = None,
-    search: str = "",
-    _: AdminUser = Depends(require_admin),
-    db: Session = Depends(get_db),
-) -> dict:
-    get_event(db, event_id)
-    query = select(CouponAudit).where(CouponAudit.event_id == event_id)
-    if vendor_id:
-        query = query.where(CouponAudit.vendor_id == vendor_id)
-    if date_from:
-        query = query.where(CouponAudit.created_at >= datetime.combine(date_from, time.min))
-    if date_to:
-        query = query.where(
-            CouponAudit.created_at < datetime.combine(date_to + timedelta(days=1), time.min)
-        )
-    if search:
-        term = f"%{search}%"
-        query = query.where(
-            or_(
-                CouponAudit.participant_name.like(term),
-                CouponAudit.participant_code.like(term),
-                CouponAudit.reference.like(term),
-                CouponAudit.coupon_name.like(term),
-                CouponAudit.vendor_name.like(term),
-            )
-        )
-    rows = db.scalars(query.order_by(CouponAudit.created_at.desc()).limit(500))
-    return {
-        "audits": [
-            {
-                "id": r.id,
-                "reference": r.reference,
-                "action": r.action,
-                "coupon_name": r.coupon_name,
-                "participant_code": r.participant_code,
-                "participant_name": r.participant_name,
-                "vendor_id": r.vendor_id,
-                "vendor_name": r.vendor_name,
-                "actor": r.actor,
-                "created_at": r.created_at,
-            }
-            for r in rows
-        ]
-    }
-
-
-def ledger_rows(
-    db: Session,
-    event_id: int,
-    *,
-    status: TransactionStatus | None = None,
-    transaction_type: TransactionType | None = None,
-    vendor_id: int | None = None,
-    date_from: date | None = None,
-    date_to: date | None = None,
-    search: str = "",
-) -> list[list]:
-    rows = db.scalars(
-        transaction_query(
-            event_id,
-            status=status,
-            transaction_type=transaction_type,
-            vendor_id=vendor_id,
-            date_from=date_from,
-            date_to=date_to,
-            search=search,
-        ).order_by(MoneyTransaction.created_at.desc())
-    )
-    return [
-        [
-            r.reference,
-            r.created_at.isoformat(),
-            r.type.value,
-            r.status.value,
-            r.amount_minor,
-            r.participant_code,
-            r.participant_name,
-            r.group_name or "",
-            r.vendor_name or "",
-            r.actor,
-            r.note or "",
-        ]
-        for r in rows
-    ]
-
-
-@router.get("/events/{event_id}/transactions/export.{format}")
-def export_transactions(
-    event_id: int,
-    format: str,
-    status: TransactionStatus | None = None,
-    transaction_type: TransactionType | None = Query(default=None, alias="type"),
-    vendor_id: int | None = None,
-    date_from: date | None = None,
-    date_to: date | None = None,
-    search: str = "",
-    _: AdminUser = Depends(require_admin),
-    db: Session = Depends(get_db),
-) -> Response:
-    event = get_event(db, event_id)
-    if format not in {"csv", "xlsx"}:
-        raise ApiError(404, "not_found", "Export format was not found.")
-    headers = [
-        "reference",
-        "created_at",
-        "type",
-        "status",
-        "amount_minor",
-        "participant_code",
-        "participant_name",
-        "group",
-        "vendor",
-        "actor",
-        "note",
-    ]
-    rows = ledger_rows(
-        db,
-        event_id,
-        status=status,
-        transaction_type=transaction_type,
-        vendor_id=vendor_id,
-        date_from=date_from,
-        date_to=date_to,
-        search=search,
-    )
-    if format == "csv":
-        output = io.StringIO(newline="")
-        writer = csv.writer(output)
-        writer.writerow(headers)
-        writer.writerows(rows)
-        return Response(
-            output.getvalue(),
-            media_type="text/csv",
-            headers={
-                "Content-Disposition": f'attachment; filename="{event.code}-transactions.csv"'
-            },
-        )
-    workbook = Workbook()
-    sheet = workbook.active
-    sheet.title = "Transactions"
-    sheet.append(headers)
-    for row in rows:
-        sheet.append(row)
-    binary = io.BytesIO()
-    workbook.save(binary)
-    return Response(
-        binary.getvalue(),
-        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        headers={"Content-Disposition": f'attachment; filename="{event.code}-transactions.xlsx"'},
-    )
-
-
-@router.get("/events/{event_id}/actions")
-def list_actions(
-    event_id: int, _: AdminUser = Depends(require_admin), db: Session = Depends(get_db)
-) -> dict:
-    get_event(db, event_id)
-    actions = list(
-        db.scalars(
-            select(ScheduledAction)
-            .where(ScheduledAction.event_id == event_id)
-            .order_by(ScheduledAction.execute_at.desc())
-        )
-    )
-    run_counts: dict[int, int] = {
-        action_id: count
-        for action_id, count in db.execute(
-            select(ScheduledActionRun.action_id, func.count(ScheduledActionRun.id))
-            .where(ScheduledActionRun.action_id.in_([action.id for action in actions]))
-            .group_by(ScheduledActionRun.action_id)
-        )
-    }
-    runs = list(
-        db.scalars(
-            select(ScheduledActionRun)
-            .join(ScheduledAction)
-            .where(ScheduledAction.event_id == event_id)
-            .order_by(ScheduledActionRun.executed_at.desc())
-            .limit(50)
-        )
-    )
-    return {
-        "actions": [
-            {
-                "id": a.id,
-                "name": a.name,
-                "action_type": a.action_type,
-                "email_template_id": a.email_template_id,
-                "email_subject": a.email_subject,
-                "schedule_type": a.schedule_type,
-                "execute_at": a.execute_at,
-                "schedule_start": a.schedule_start,
-                "schedule_end": a.schedule_end,
-                "schedule_time": a.schedule_time,
-                "auto_delete": a.auto_delete,
-                "enabled": a.enabled,
-                "completed_at": a.completed_at,
-                "run_count": run_counts.get(a.id, 0),
-            }
-            for a in actions
-        ],
-        "runs": [
-            {
-                "id": r.id,
-                "action_id": r.action_id,
-                "success": r.success,
-                "affected_count": r.affected_count,
-                "message": r.message,
-                "executed_at": r.executed_at,
-            }
-            for r in runs
-        ],
-    }
-
-
-@router.post("/events/{event_id}/actions", status_code=201)
-def create_action(
-    event_id: int,
-    payload: ActionCreate,
-    admin: AdminUser = Depends(require_admin_csrf),
-    db: Session = Depends(get_db),
-) -> dict:
-    get_event(db, event_id)
-    validate_action_email_template(db, event_id, payload)
-    action = ScheduledAction(
-        event_id=event_id,
-        name=payload.name,
-        action_type=payload.action_type,
-        schedule_type=payload.schedule_type,
-        execute_at=payload.execute_at,
-        schedule_start=payload.schedule_start or payload.execute_at.date(),
-        schedule_end=payload.schedule_end,
-        schedule_time=payload.schedule_time or payload.execute_at.time().replace(tzinfo=None),
-        auto_delete=payload.auto_delete,
-        email_template_id=payload.email_template_id,
-        email_subject=payload.email_subject,
-        created_by=f"admin:{admin.id}",
-    )
-    db.add(action)
-    db.flush()
-    for wallet_id in payload.excluded_wallet_ids:
-        belongs = db.scalar(
-            select(Wallet.id).where(Wallet.id == wallet_id, Wallet.event_id == event_id)
-        )
-        if belongs:
-            db.add(ActionWalletOverride(action_id=action.id, wallet_id=wallet_id, included=False))
-    db.commit()
-    return {"action": {"id": action.id, "name": action.name}}
-
-
-def validate_action_email_template(
-    db: Session, event_id: int, payload: ActionCreate
-) -> None:
-    if payload.action_type != ActionType.send_email:
-        return
-    template = db.scalar(
-        select(EmailTemplate).where(
-            EmailTemplate.id == payload.email_template_id,
-            EmailTemplate.event_id == event_id,
-            EmailTemplate.archived_at.is_(None),
-        )
-    )
-    if not template:
-        raise ApiError(
-            422,
-            "invalid_email_template",
-            "Choose an active email template from this event.",
-        )
-
-
-@router.put("/events/{event_id}/actions/{action_id}")
-def update_action(
-    event_id: int,
-    action_id: int,
-    payload: ActionCreate,
-    _: AdminUser = Depends(require_admin_csrf),
-    db: Session = Depends(get_db),
-) -> dict:
-    action = db.scalar(
-        select(ScheduledAction)
-        .where(ScheduledAction.id == action_id, ScheduledAction.event_id == event_id)
-        .with_for_update()
-    )
-    if not action:
-        raise ApiError(404, "not_found", "Scheduled action was not found.")
-    validate_action_email_template(db, event_id, payload)
-    action.name = payload.name
-    action.action_type = payload.action_type
-    action.schedule_type = payload.schedule_type
-    action.execute_at = payload.execute_at
-    action.schedule_start = payload.schedule_start or payload.execute_at.date()
-    action.schedule_end = payload.schedule_end
-    action.schedule_time = payload.schedule_time or payload.execute_at.time().replace(tzinfo=None)
-    action.auto_delete = payload.auto_delete
-    action.email_template_id = payload.email_template_id
-    action.email_subject = payload.email_subject
-    action.completed_at = None
-    db.commit()
-    return {"action": {"id": action.id, "name": action.name}}
-
-
-@router.patch("/events/{event_id}/actions/{action_id}/enabled")
-def set_action_enabled(
-    event_id: int,
-    action_id: int,
-    enabled: bool,
-    _: AdminUser = Depends(require_admin_csrf),
-    db: Session = Depends(get_db),
-) -> dict:
-    action = db.scalar(
-        select(ScheduledAction)
-        .where(ScheduledAction.id == action_id, ScheduledAction.event_id == event_id)
-        .with_for_update()
-    )
-    if not action:
-        raise ApiError(404, "not_found", "Scheduled action was not found.")
-    action.enabled = enabled
-    db.commit()
-    return {"action": {"id": action.id, "enabled": action.enabled}}
-
-
-@router.delete("/events/{event_id}/actions/{action_id}", status_code=204)
-def delete_action(
-    event_id: int,
-    action_id: int,
-    _: AdminUser = Depends(require_admin_csrf),
-    db: Session = Depends(get_db),
-) -> Response:
-    action = db.scalar(
-        select(ScheduledAction)
-        .where(ScheduledAction.id == action_id, ScheduledAction.event_id == event_id)
-        .with_for_update()
-    )
-    if not action:
-        raise ApiError(404, "not_found", "Scheduled action was not found.")
-    if db.scalar(
-        select(func.count(ScheduledActionRun.id)).where(
-            ScheduledActionRun.action_id == action.id
-        )
-    ):
-        raise ApiError(
-            409,
-            "action_has_history",
-            "Automations with execution history cannot be deleted. Disable the automation instead.",
-        )
-    db.delete(action)
-    db.commit()
-    return Response(status_code=204)
-
-
-@router.post("/events/{event_id}/actions/{action_id}/run")
-def run_action_now(
-    event_id: int,
-    action_id: int,
-    admin: AdminUser = Depends(require_admin_csrf),
-    db: Session = Depends(get_db),
-) -> dict:
-    action = db.scalar(
-        select(ScheduledAction)
-        .where(ScheduledAction.id == action_id, ScheduledAction.event_id == event_id)
-        .with_for_update()
-    )
-    if not action:
-        raise ApiError(404, "not_found", "Scheduled action was not found.")
-    # Manual runs are independently keyed and never consume the configured schedule.
-    run = execute_action(
-        db,
-        action,
-        f"manual-{utcnow().strftime('%Y%m%d%H%M%S%f')}",
-        f"admin:{admin.id}",
-        advance_schedule=False,
-    )
-    return {
-        "run": {
-            "id": run.id,
-            "success": run.success,
-            "affected_count": run.affected_count,
-            "message": run.message,
-        }
-    }
-
-
-@router.post("/events/{event_id}/actions/{action_id}/wallet-scope")
-def apply_action_wallet_scope(
-    event_id: int,
-    action_id: int,
-    payload: ActionWalletScope,
-    admin: AdminUser = Depends(require_admin_csrf),
-    db: Session = Depends(get_db),
-) -> dict:
-    action = db.scalar(
-        select(ScheduledAction)
-        .where(ScheduledAction.id == action_id, ScheduledAction.event_id == event_id)
-        .with_for_update()
-    )
-    if not action:
-        raise ApiError(404, "not_found", "Scheduled action was not found.")
-
-    requested_ids = list(dict.fromkeys(payload.wallet_ids))
-    event_wallet_ids = set(
-        db.scalars(
-            select(Wallet.id).where(
-                Wallet.event_id == event_id,
-                Wallet.id.in_(requested_ids),
-            )
-        )
-    )
-    if len(event_wallet_ids) != len(requested_ids):
-        raise ApiError(
-            400,
-            "invalid_wallet_scope",
-            "One or more selected wallets do not belong to this event.",
-        )
-
-    if payload.operation == "execute":
-        run = execute_action(
-            db,
-            action,
-            f"scope-{utcnow().strftime('%Y%m%d%H%M%S%f')}",
-            f"admin:{admin.id}",
-            advance_schedule=False,
-            wallet_ids_override=requested_ids,
-        )
-        return {
-            "message": run.message,
-            "affected_count": run.affected_count,
-            "run_id": run.id,
-        }
-
-    included = payload.operation == "include"
-    for wallet_id in requested_ids:
-        override = db.get(ActionWalletOverride, (action.id, wallet_id))
-        if override:
-            override.included = included
-        else:
-            db.add(
-                ActionWalletOverride(
-                    action_id=action.id,
-                    wallet_id=wallet_id,
-                    included=included,
-                )
-            )
-    db.commit()
-    operation = "included in" if included else "excluded from"
-    return {
-        "message": f"{len(requested_ids)} wallets were {operation} the schedule.",
-        "affected_count": len(requested_ids),
-    }
+router.include_router(admin_reporting.router)
+router.include_router(admin_actions.router)
