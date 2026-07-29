@@ -95,9 +95,11 @@ verify_migration_state() {
   local current=""
   local heads=""
 
-  current="$(compose exec -T api alembic current | sed -E 's/[[:space:]]+\(head\)$//' \
+  current="$(compose exec -T api alembic current </dev/null \
+    | sed -E 's/[[:space:]]+\(head\)$//' \
     | sed '/^[[:space:]]*$/d')"
-  heads="$(compose exec -T api alembic heads | sed -E 's/[[:space:]]+\(head\)$//' \
+  heads="$(compose exec -T api alembic heads </dev/null \
+    | sed -E 's/[[:space:]]+\(head\)$//' \
     | sed '/^[[:space:]]*$/d')"
 
   [[ -n "$current" && "$current" == "$heads" ]] \
@@ -133,6 +135,7 @@ create_migration_backup() {
   log "Creating pre-migration database backup"
   compose exec -T mysql sh -lc \
     'exec mysqldump --single-transaction --quick --routines --triggers --add-drop-table -uroot -p"$MYSQL_ROOT_PASSWORD" "$MYSQL_DATABASE"' \
+    </dev/null \
     > "$temporary_backup"
   chmod 600 "$temporary_backup"
   [[ -s "$temporary_backup" ]] || fail "Database backup is empty"
@@ -246,7 +249,7 @@ fi
 
 DEPLOYMENT_STARTED=true
 compose stop api scheduler
-compose run --rm migrate
+compose run --rm migrate </dev/null
 start_application
 
 rotate_backups

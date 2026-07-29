@@ -65,11 +65,19 @@ case "$arguments" in
   *" ps -q api "*) printf 'api-id\n' ;;
   *" ps -q scheduler "*) printf 'scheduler-id\n' ;;
   *" exec -T mysql "*)
+    cat >/dev/null
     printf '%s\n' '-- mock dump' '-- Dump completed on 2026-01-01'
     ;;
-  *" exec -T api alembic current "*) printf '0001 (head)\n' ;;
-  *" exec -T api alembic heads "*) printf '0001 (head)\n' ;;
+  *" exec -T api alembic current "*)
+    cat >/dev/null
+    printf '0001 (head)\n'
+    ;;
+  *" exec -T api alembic heads "*)
+    cat >/dev/null
+    printf '0001 (head)\n'
+    ;;
   *" run --rm migrate "*)
+    cat >/dev/null
     [[ "${MOCK_MIGRATION_FAIL:-0}" != "1" ]]
     ;;
   *) exit 0 ;;
@@ -107,7 +115,7 @@ printf 'CADDY_ADDRESS=api.example.com\n' > "${DEPLOY_REPO}/.env.backend"
 first_image="$(image_for 1)"
 (
   cd "$DEPLOY_REPO"
-  PATH="${MOCK_BIN}:$PATH" "$DEPLOY_SCRIPT" "$first_sha" "$first_image"
+  PATH="${MOCK_BIN}:$PATH" bash -s -- "$first_sha" "$first_image" < "$DEPLOY_SCRIPT"
 )
 [[ "$(sed -n '1p' "${DEPLOY_REPO}/.deployment/last-successful")" == "$first_sha" ]] \
   || fail "first deployment state was not recorded"
