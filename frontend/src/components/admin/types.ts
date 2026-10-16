@@ -1,3 +1,4 @@
+// Event configuration and participant/vendor summaries used by the admin panels.
 export type Event = {
   id: number;
   code: string;
@@ -47,6 +48,7 @@ export type CouponTemplate = {
   active: boolean;
 };
 
+// Read-only money and coupon audit records shown together in the ledger.
 export type Transaction = {
   kind: "money";
   id: number;
@@ -76,6 +78,7 @@ export type CouponTransaction = {
   created_at: string;
 };
 
+// Automation configuration and delivery/template data.
 export type ScheduledAction = {
   id: number;
   name: string;

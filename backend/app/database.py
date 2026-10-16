@@ -8,6 +8,8 @@ from .config import settings
 
 
 def utcnow() -> datetime:
+    """Return the current UTC time without timezone metadata, matching stored database timestamps.
+    """
     return datetime.now(UTC).replace(tzinfo=None)
 
 
@@ -20,5 +22,6 @@ SessionLocal = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False
 
 
 def get_db() -> Generator[Session, None, None]:
+    """Yield one request-scoped database session and close it after the request; callers commit."""
     with SessionLocal() as session:
         yield session

@@ -20,7 +20,9 @@ from ..security import hash_password, new_token, token_hash, verify_password
 router = APIRouter(prefix="/auth", tags=["admin-auth"])
 
 
+# Administrator identity, registration, and sign-in.
 def user_json(admin: AdminUser, impersonating: bool = False) -> dict:
+    """Return administrator identity and account flags without password or session secrets."""
     return {
         "id": admin.id,
         "email": admin.email,
@@ -32,6 +34,9 @@ def user_json(admin: AdminUser, impersonating: bool = False) -> dict:
 
 @router.post("/register", status_code=201)
 def register(payload: AdminRegister, response: Response, db: Session = Depends(get_db)) -> dict:
+    """Commit an administrator and session, set the secure session cookie, and return identity and
+    CSRF.
+    """
     admin = AdminUser(
         email=payload.email,
         password_hash=hash_password(payload.password),
@@ -63,6 +68,9 @@ def register(payload: AdminRegister, response: Response, db: Session = Depends(g
 
 @router.post("/login")
 def login(payload: LoginRequest, response: Response, db: Session = Depends(get_db)) -> dict:
+    """Authenticate an active administrator, commit a session, set its cookie, and return
+    identity/CSRF.
+    """
     admin = db.scalar(select(AdminUser).where(AdminUser.email == payload.email.lower()))
     if (
         not admin or not verify_password(payload.password, admin.password_hash)
@@ -96,18 +104,21 @@ def me(
     db: Session = Depends(get_db),
     admin_session: str | None = Cookie(default=None),
 ) -> dict:
+    """Return the current administrator identity and impersonation state."""
     session = db.scalar(
         select(AdminSession).where(AdminSession.token_hash == token_hash(admin_session or ""))
     )
     return {"user": user_json(admin, bool(session and session.impersonator_admin_id))}
 
 
+# Session impersonation, CSRF rotation, and revocation.
 @router.post("/stop-impersonating")
 def stop_impersonating(
     admin: AdminUser = Depends(require_admin_csrf),
     db: Session = Depends(get_db),
     admin_session: str | None = Cookie(default=None),
 ) -> dict:
+    """Restore the original super-admin session identity and return the resulting user."""
     session = db.scalar(
         select(AdminSession)
         .where(AdminSession.token_hash == token_hash(admin_session or ""))
@@ -130,6 +141,7 @@ def csrf(
     db: Session = Depends(get_db),
     admin_session: str | None = Cookie(default=None),
 ) -> dict:
+    """Commit a rotated administrator CSRF hash and return the raw CSRF token."""
     row = db.scalar(
         select(AdminSession).where(AdminSession.token_hash == token_hash(admin_session or ""))
     )
@@ -148,6 +160,7 @@ def logout(
     db: Session = Depends(get_db),
     admin_session: str | None = Cookie(default=None),
 ) -> dict:
+    """Commit administrator session revocation, clear its cookie, and return confirmation."""
     row = db.scalar(
         select(AdminSession).where(AdminSession.token_hash == token_hash(admin_session or ""))
     )

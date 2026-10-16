@@ -11,6 +11,7 @@ from .security import hash_password
 
 
 def create_admin(email: str | None, password: str | None) -> None:
+    """Create a hashed-password administrator from arguments or prompts and commit it."""
     raw_email = email or os.getenv("ADMIN_EMAIL") or input("Admin email: ")
     try:
         email = normalize_admin_email(raw_email)
@@ -40,6 +41,7 @@ def create_admin(email: str | None, password: str | None) -> None:
 
 
 def seed_demo() -> None:
+    """Commit a sample event, administrator, vendor, and participants for local development."""
     if os.getenv("APP_ENV", "development") == "production":
         raise SystemExit("Demo data is disabled in production.")
     with SessionLocal() as db:
@@ -61,6 +63,7 @@ def seed_demo() -> None:
 
 
 def main() -> None:
+    """Parse the administrative CLI command and run its account-creation or demo-seeding handler."""
     parser = argparse.ArgumentParser()
     subparsers = parser.add_subparsers(dest="command", required=True)
     admin = subparsers.add_parser("create-admin")

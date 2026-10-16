@@ -8,6 +8,7 @@ from .database import engine
 from .errors import ApiError, api_error_handler, validation_error_handler
 from .routers import admin, admin_email, auth, email, participant, vendor
 
+# Application metadata and documentation URLs.
 app = FastAPI(
     title=settings.app_name,
     version="1.0.0",
@@ -15,6 +16,7 @@ app = FastAPI(
     openapi_url="/api/openapi.json",
 )
 
+# Stable errors and cross-origin browser access.
 app.add_exception_handler(ApiError, api_error_handler)
 app.add_exception_handler(RequestValidationError, validation_error_handler)
 
@@ -26,6 +28,7 @@ app.add_middleware(
     allow_headers=["Content-Type", "X-CSRF-Token"],
 )
 
+# Register audience-specific routes; admin.py assembles its feature routers.
 app.include_router(auth.router, prefix="/api/v1")
 app.include_router(admin.router, prefix="/api/v1")
 app.include_router(admin_email.router, prefix="/api/v1")
@@ -36,6 +39,7 @@ app.include_router(email.router, prefix="/api/v1")
 
 @app.get("/health", include_in_schema=False)
 def health() -> dict:
+    """Check database connectivity and return an OK payload; database failures propagate."""
     with engine.connect() as connection:
         connection.execute(text("SELECT 1"))
     return {"status": "ok"}

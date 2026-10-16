@@ -7,6 +7,7 @@ import { Empty, Field } from "./AdminUi";
 import { StatusBadge } from "./StatusBadge";
 import type { CouponTemplate, Event, Vendor } from "./types";
 
+/** Manage event coupon templates, issue selected templates, and toggle issued coupon availability. */
 export function CouponsPanel({ event, csrf }: { event: Event; csrf: string }) {
   const [items, setItems] = useState<CouponTemplate[]>([]);
   const [vendors, setVendors] = useState<Vendor[]>([]);
@@ -15,6 +16,7 @@ export function CouponsPanel({ event, csrf }: { event: Event; csrf: string }) {
   const [error, setError] = useState("");
   const [editing, setEditing] = useState<CouponTemplate | null>(null);
   const [instances, setInstances] = useState<Array<{ id: number; code: string; name: string; participant_name: string; participant_code: string; status: string }>>([]);
+  /** Refresh event coupon templates, vendors, and issued coupon instances. */
   const load = useCallback(async () => {
     const [templatesResult, vendorsResult, instancesResult] = await Promise.all([
       api<{ templates: CouponTemplate[] }>(`/admin/events/${event.id}/coupon-templates`),
@@ -34,6 +36,7 @@ export function CouponsPanel({ event, csrf }: { event: Event; csrf: string }) {
     return <Empty text="Coupons are not enabled for this event." />;
   }
 
+  /** Create an event coupon template and refresh its list. */
   async function submit(submitEvent: FormEvent<HTMLFormElement>) {
     submitEvent.preventDefault();
     const formElement = submitEvent.currentTarget;
@@ -60,6 +63,7 @@ export function CouponsPanel({ event, csrf }: { event: Event; csrf: string }) {
     }
   }
 
+  /** Issue the selected active templates to event wallets and reload the coupon summaries. */
   async function issueSelected() {
     if (!selectedTemplateIds.size) return;
     setError("");
@@ -80,6 +84,7 @@ export function CouponsPanel({ event, csrf }: { event: Event; csrf: string }) {
     }
   }
 
+  /** Toggle availability for all issued coupons or only those from one template, then reload. */
   async function setAll(enabled: boolean, templateId?: number) {
     setError("");
     try {
@@ -95,6 +100,7 @@ export function CouponsPanel({ event, csrf }: { event: Event; csrf: string }) {
     }
   }
 
+  /** Save edited coupon details and optional issued-instance changes, then refresh the list. */
   async function saveTemplate(submitEvent: FormEvent<HTMLFormElement>) {
     submitEvent.preventDefault();
     if (!editing) return;
@@ -117,6 +123,7 @@ export function CouponsPanel({ event, csrf }: { event: Event; csrf: string }) {
     }
   }
 
+  /** Confirm template deletion and surface server protection for already-issued coupons. */
   async function removeTemplate(template: CouponTemplate) {
     if (!window.confirm(`Delete ${template.name}? Issued coupons must be disabled instead.`)) return;
     try {
@@ -127,6 +134,7 @@ export function CouponsPanel({ event, csrf }: { event: Event; csrf: string }) {
     }
   }
 
+  /** Toggle one issued coupon availability and refresh its displayed status. */
   async function setInstance(id: number, enabled: boolean) {
     try {
       await api(`/admin/events/${event.id}/coupons/${id}/status`, {

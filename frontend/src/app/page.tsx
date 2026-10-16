@@ -2,6 +2,9 @@ import Link from "next/link";
 import { ArrowRight, QrCode, Settings, ShieldCheck, Store, Tickets } from "lucide-react";
 import { PublicShell } from "@/components/Shell";
 
+/**
+ * Render the public entry page linking participants, vendors, and administrators to their portals.
+ */
 export default function Home() {
   return (
     <PublicShell>

@@ -15,10 +15,14 @@ type Account = {
   created_at: string;
 };
 
+/**
+ * List administrator accounts and expose super-admin account availability and impersonation controls.
+ */
 export function AccountsPanel({ csrf, onImpersonated }: { csrf: string; onImpersonated: () => Promise<void> }) {
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [totals, setTotals] = useState({ admins: 0, events: 0 });
   const [error, setError] = useState("");
+  /** Refresh the super-admin account list and event totals. */
   const load = useCallback(async () => {
     try {
       const result = await api<{ accounts: Account[]; totals: typeof totals }>("/admin/accounts");
@@ -30,6 +34,7 @@ export function AccountsPanel({ csrf, onImpersonated }: { csrf: string; onImpers
   }, []);
   useEffect(() => { void load(); }, [load]);
 
+  /** Update an administrator account status and refresh the account list. */
   async function setActive(account: Account) {
     setError("");
     try {

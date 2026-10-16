@@ -6,6 +6,7 @@ import { api } from "@/lib/api";
 import { EmailContentFields } from "./EmailContentFields";
 import type { EmailTemplate, Event, Participant } from "./types";
 
+/** Collect an email source and send it to the selected participants with email addresses. */
 export function ParticipantEmailDialog({
   event,
   csrf,
@@ -63,6 +64,9 @@ export function ParticipantEmailDialog({
     };
   }, [event.id, onClose]);
 
+  /**
+   * Send the chosen content to the selected participants and report delivery totals to the parent.
+   */
   async function sendEmail(submitEvent: FormEvent<HTMLFormElement>) {
     submitEvent.preventDefault();
     if (

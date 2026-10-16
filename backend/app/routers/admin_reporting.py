@@ -22,6 +22,7 @@ from .admin_common import get_event
 router = APIRouter()
 
 
+# Filtered financial ledger queries and participant/vendor snapshots.
 @router.get("/events/{event_id}/transactions")
 def transactions(
     event_id: int,
@@ -34,6 +35,7 @@ def transactions(
     _: AdminUser = Depends(require_admin),
     db: Session = Depends(get_db),
 ) -> dict:
+    """Return up to 500 event ledger records matching the supplied filters."""
     get_event(db, event_id)
     query = transaction_query(
         event_id,
@@ -75,6 +77,7 @@ def transaction_query(
     date_to: date | None = None,
     search: str = "",
 ):
+    """Build an event-scoped ledger query without executing it, for listings and exports."""
     query = select(MoneyTransaction).where(MoneyTransaction.event_id == event_id)
     if status:
         query = query.where(MoneyTransaction.status == status)
@@ -102,6 +105,7 @@ def transaction_query(
     return query
 
 
+# Coupon issuance, status, and redemption history.
 @router.get("/events/{event_id}/coupon-audits")
 def coupon_audits(
     event_id: int,
@@ -112,6 +116,7 @@ def coupon_audits(
     _: AdminUser = Depends(require_admin),
     db: Session = Depends(get_db),
 ) -> dict:
+    """Return filtered event coupon history without modifying immutable audit records."""
     get_event(db, event_id)
     query = select(CouponAudit).where(CouponAudit.event_id == event_id)
     if vendor_id:
@@ -153,6 +158,7 @@ def coupon_audits(
     }
 
 
+# CSV/Excel export formatting; no ledger records are modified.
 def ledger_rows(
     db: Session,
     event_id: int,
@@ -164,6 +170,7 @@ def ledger_rows(
     date_to: date | None = None,
     search: str = "",
 ) -> list[list]:
+    """Convert transaction records to ordered spreadsheet/CSV cell values."""
     rows = db.scalars(
         transaction_query(
             event_id,
@@ -206,6 +213,7 @@ def export_transactions(
     _: AdminUser = Depends(require_admin),
     db: Session = Depends(get_db),
 ) -> Response:
+    """Return the filtered event ledger as a downloadable CSV or Excel response."""
     event = get_event(db, event_id)
     if format not in {"csv", "xlsx"}:
         raise ApiError(404, "not_found", "Export format was not found.")

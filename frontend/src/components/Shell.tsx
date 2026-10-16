@@ -12,6 +12,7 @@ export function Brand() {
   );
 }
 
+/** Wrap public pages in the shared branded header, content area, and footer. */
 export function PublicShell({ children }: { children: React.ReactNode }) {
   return (
     <main className="min-h-screen bg-canvas">

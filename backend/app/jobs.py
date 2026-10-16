@@ -9,6 +9,7 @@ from .models import ScheduledAction
 
 
 def run_due() -> dict[str, int]:
+    """Acquire the MySQL scheduler lock, process due work, and return action/expiration counts."""
     with SessionLocal() as db:
         acquired = db.scalar(text("SELECT GET_LOCK('event-manager-scheduler', 0)"))
         if acquired != 1:
@@ -41,6 +42,7 @@ def run_due() -> dict[str, int]:
 
 
 def loop() -> None:
+    """Run the scheduler every minute, reporting transient failures without stopping the process."""
     while True:
         try:
             print(run_due(), flush=True)

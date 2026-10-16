@@ -8,6 +8,7 @@ export const metadata: Metadata = {
   robots: { index: false, follow: false },
 };
 
+/** Provide the shared page shell, fonts, metadata, and analytics for every route. */
 export default function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {

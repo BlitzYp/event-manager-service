@@ -27,6 +27,7 @@ from .models import (
 )
 from .security import new_token, token_hash
 
+# Template size limits, supported blocks/tokens, and sanitizer allowlists.
 DOCUMENT_MAX_BYTES = 1_048_576
 HTML_MAX_BYTES = 2_097_152
 SUPPORTED_BLOCK_TYPES = {
@@ -63,15 +64,19 @@ SAFE_TEXT_COLOR_RE = re.compile(
 )
 
 
+# Managed asset origins and event-owned template validation.
 def public_email_asset_origin() -> str:
+    """Return the public API origin for email images, falling back to the application origin."""
     return (settings.public_api_url or settings.public_app_url).rstrip("/")
 
 
 def public_email_asset_url(asset_id: int, token: str) -> str:
+    """Return the public image URL containing its asset ID and access token."""
     return f"{public_email_asset_origin()}/api/v1/email-assets/{asset_id}?token={token}"
 
 
 def _rebase_managed_asset_urls(source: str) -> str:
+    """Return HTML with managed image URLs moved to the configured public API origin."""
     app_origin = settings.public_app_url.rstrip("/")
     asset_origin = public_email_asset_origin()
     if app_origin == asset_origin:
@@ -85,6 +90,7 @@ def _rebase_managed_asset_urls(source: str) -> str:
 def validate_template_document(
     db: Session, event_id: int, document: dict[str, Any], rendered_html: str
 ) -> str:
+    """Validate block links, safe URLs, size, and event-owned images; return serialized JSON."""
     encoded = json.dumps(document, ensure_ascii=False, separators=(",", ":"))
     if len(encoded.encode()) > DOCUMENT_MAX_BYTES:
         raise ApiError(422, "template_too_large", "Email template document is too large.")
@@ -123,6 +129,7 @@ def validate_template_document(
 
 
 def _child_ids(block: dict[str, Any]) -> list[Any]:
+    """Return child-block references from layouts, nested containers, and column props."""
     raw_data = block.get("data")
     data: dict[str, Any] = raw_data if isinstance(raw_data, dict) else {}
     raw_props = data.get("props")
@@ -137,6 +144,7 @@ def _child_ids(block: dict[str, Any]) -> list[Any]:
 
 
 def _block_urls(block: dict[str, Any]) -> list[str]:
+    """Return the URL fields that require validation for a button or image block."""
     raw_data = block.get("data")
     data: dict[str, Any] = raw_data if isinstance(raw_data, dict) else {}
     raw_props = data.get("props")
@@ -149,6 +157,7 @@ def _block_urls(block: dict[str, Any]) -> list[str]:
 
 
 def _validate_url(db: Session, event_id: int, value: str) -> None:
+    """Reject non-HTTP links and foreign managed images, allowing wallet-link placeholders."""
     if not value or unquote(html.unescape(value)) in {
         "{{wallet_link}}",
         "{{public_wallet}}",
@@ -175,6 +184,7 @@ def _validate_url(db: Session, event_id: int, value: str) -> None:
 
 
 def _validate_managed_assets(db: Session, event_id: int, value: str) -> None:
+    """Reject malformed managed-image URLs or assets that do not belong to the event."""
     matches = list(ASSET_URL_RE.finditer(value))
     if "/api/v1/email-assets/" in value and not matches:
         raise ApiError(422, "invalid_email_asset", "The template contains an invalid image URL.")
@@ -194,6 +204,7 @@ def _validate_managed_assets(db: Session, event_id: int, value: str) -> None:
             )
 
 
+# Personalization and server-side rich-text sanitization.
 def template_values(
     event: Event,
     participant: Participant | None,
@@ -201,6 +212,7 @@ def template_values(
     recipient_name: str | None,
     wallet_link: str,
 ) -> dict[str, str]:
+    """Return recipient, event, and wallet-link values keyed by supported placeholder names."""
     full_name = participant.name if participant else (recipient_name or "")
     names = full_name.strip().split(maxsplit=1)
     return {
@@ -218,6 +230,7 @@ def template_values(
 
 
 def render_template(source: str, values: dict[str, str], *, escape_values: bool) -> str:
+    """Return text with placeholders substituted, optionally HTML-escaping inserted values."""
     rendered = source
     for placeholder, value in values.items():
         replacement = html.escape(value, quote=True) if escape_values else value
@@ -302,6 +315,7 @@ class _BasicEmailSanitizer(HTMLParser):
 
 
 def basic_email_html(source: str) -> str:
+    """Return email-safe HTML from basic rich text or plain text using the server sanitizer."""
     sanitizer = _BasicEmailSanitizer()
     sanitizer.feed(source.strip())
     sanitizer.close()
@@ -318,7 +332,9 @@ def basic_email_html(source: str) -> str:
     )
 
 
+# Per-recipient wallet links, delivery audits, and SMTP transport.
 def create_email_wallet_link(db: Session, participant: Participant) -> str:
+    """Stage a separate hashed wallet token and return its secret delivery URL; caller commits."""
     raw_token = new_token()
     db.add(
         WalletAccessToken(
@@ -343,6 +359,11 @@ def send_template_email(
     basic_body: str | None = None,
     development_delivery_number: int = 0,
 ) -> EmailDelivery:
+    """Stage one delivery audit and send or simulate it under environment safeguards.
+
+    Return its sent/failed/simulated record; the caller commits delivery and token
+    changes. Each participant delivery receives its own hashed wallet access token.
+    """
     address = str(participant.email if participant else recipient_email or "")
     name = participant.name if participant else recipient_name
     is_development = settings.environment.lower() != "production"
@@ -410,6 +431,7 @@ def send_template_email(
 
 
 def _smtp_send(recipient: str, recipient_name: str | None, subject: str, body: str) -> None:
+    """Send one HTML email with configured SMTP authentication/TLS; propagate transport errors."""
     if not settings.smtp_host:
         raise RuntimeError("SMTP_HOST is not configured.")
     message = EmailMessage()

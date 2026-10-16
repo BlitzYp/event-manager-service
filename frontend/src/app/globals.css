@@ -2,6 +2,7 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Shared design tokens and document defaults. */
 :root {
   color-scheme: light;
   --font-display: "Segoe UI", Arial, sans-serif;
@@ -38,6 +39,7 @@ a {
   -webkit-tap-highlight-color: transparent;
 }
 
+/* Reusable surfaces, buttons, and form controls. */
 .card {
   @apply border-0 bg-white;
   border-radius: 0.5rem;

@@ -39,7 +39,9 @@ router = APIRouter(
 )
 
 
+# Shared event lookup and template response/uniqueness helpers.
 def get_event(db: Session, event_id: int) -> Event:
+    """Return the requested event, optionally locked, or raise a not-found API error."""
     event = db.scalar(select(Event).where(Event.id == event_id))
     if not event:
         raise ApiError(404, "not_found", "Event was not found.")
@@ -47,6 +49,7 @@ def get_event(db: Session, event_id: int) -> Event:
 
 
 def template_json(row: EmailTemplate, include_content: bool = False) -> dict:
+    """Return template metadata, optionally including its editable document and HTML."""
     result = {
         "id": row.id,
         "event_id": row.event_id,
@@ -68,6 +71,7 @@ def template_json(row: EmailTemplate, include_content: bool = False) -> dict:
 def ensure_name_available(
     db: Session, event_id: int, name: str, template_id: int | None = None
 ) -> None:
+    """Reject a duplicate active template name within the same event."""
     duplicate = db.scalar(
         select(EmailTemplate.id).where(
             EmailTemplate.event_id == event_id,
@@ -84,6 +88,7 @@ def ensure_name_available(
         )
 
 
+# Versioned email template editing and archival.
 @router.get("/events/{event_id}/email-templates")
 def list_templates(
     event_id: int,
@@ -91,6 +96,7 @@ def list_templates(
     _: AdminUser = Depends(require_admin),
     db: Session = Depends(get_db),
 ) -> dict:
+    """Return the event template summaries, including archived templates when requested."""
     get_event(db, event_id)
     query = select(EmailTemplate).where(EmailTemplate.event_id == event_id)
     if not include_archived:
@@ -106,6 +112,7 @@ def get_template(
     _: AdminUser = Depends(require_admin),
     db: Session = Depends(get_db),
 ) -> dict:
+    """Return one event-owned template including its editable document and rendered HTML."""
     row = db.scalar(
         select(EmailTemplate).where(
             EmailTemplate.id == template_id,
@@ -124,6 +131,7 @@ def create_template(
     admin: AdminUser = Depends(require_admin_csrf),
     db: Session = Depends(get_db),
 ) -> dict:
+    """Validate and commit a uniquely named event template; return its editable content."""
     get_event(db, event_id)
     name = payload.name.strip()
     ensure_name_available(db, event_id, name)
@@ -155,6 +163,7 @@ def update_template(
     admin: AdminUser = Depends(require_admin_csrf),
     db: Session = Depends(get_db),
 ) -> dict:
+    """Validate and commit template changes with optimistic version checking; return its content."""
     row = db.scalar(
         select(EmailTemplate)
         .where(
@@ -193,6 +202,7 @@ def archive_template(
     admin: AdminUser = Depends(require_admin_csrf),
     db: Session = Depends(get_db),
 ) -> dict:
+    """Commit template archive status and return its updated summary."""
     row = db.scalar(
         select(EmailTemplate)
         .where(
@@ -212,7 +222,9 @@ def archive_template(
     return {"template": template_json(row)}
 
 
+# Event-owned image metadata, uploads, and safe deletion.
 def asset_json(row: EmailAsset) -> dict:
+    """Return public metadata and the signed image URL for one email asset."""
     return {
         "id": row.id,
         "original_name": row.original_name,
@@ -231,6 +243,7 @@ def list_assets(
     _: AdminUser = Depends(require_admin),
     db: Session = Depends(get_db),
 ) -> dict:
+    """Return metadata for email images belonging to the requested event."""
     get_event(db, event_id)
     rows = db.scalars(
         select(EmailAsset)
@@ -247,6 +260,7 @@ def upload_asset(
     admin: AdminUser = Depends(require_admin_csrf),
     db: Session = Depends(get_db),
 ) -> dict:
+    """Validate image type/size, commit normalized image data, and return its metadata."""
     get_event(db, event_id)
     content = file.file.read(5_242_881)
     if not content or len(content) > 5_242_880:
@@ -296,6 +310,7 @@ def delete_asset(
     _: AdminUser = Depends(require_admin_csrf),
     db: Session = Depends(get_db),
 ) -> Response:
+    """Delete and commit an unused event image; reject assets referenced by templates."""
     row = db.scalar(
         select(EmailAsset).where(
             EmailAsset.id == asset_id,
@@ -325,6 +340,7 @@ def delete_asset(
     return Response(status_code=204)
 
 
+# Immediate delivery and recorded delivery history.
 @router.post("/events/{event_id}/emails/send")
 def send_email(
     event_id: int,
@@ -332,6 +348,7 @@ def send_email(
     admin: AdminUser = Depends(require_admin_csrf),
     db: Session = Depends(get_db),
 ) -> dict:
+    """Send or simulate recipient deliveries, commit their audits, and return delivery counts."""
     event = get_event(db, event_id)
     template = None
     if payload.source == "template":
@@ -414,6 +431,7 @@ def list_deliveries(
     _: AdminUser = Depends(require_admin),
     db: Session = Depends(get_db),
 ) -> dict:
+    """Return recent event email delivery history without exposing raw wallet tokens."""
     get_event(db, event_id)
     rows = db.scalars(
         select(EmailDelivery)

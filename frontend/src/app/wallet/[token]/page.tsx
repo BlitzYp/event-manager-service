@@ -31,6 +31,9 @@ type Transaction = {
   expires_at?: string;
 };
 
+/**
+ * Poll a secret-link wallet and render balances, expiring QR codes, coupons, and payment decisions.
+ */
 export default function ParticipantWallet() {
   const params = useParams<{ token: string }>();
   const token = params.token;
@@ -38,6 +41,7 @@ export default function ParticipantWallet() {
   const [error, setError] = useState("");
   const [qr, setQr] = useState("");
   const [ttl, setTtl] = useState(0);
+  /** Refresh participant wallet state using the secret route token. */
   const load = useCallback(async () => {
     try {
       setState(
@@ -58,6 +62,7 @@ export default function ParticipantWallet() {
     const id = setInterval(() => setTtl((v) => Math.max(0, v - 1)), 1000);
     return () => clearInterval(id);
   }, [ttl]);
+  /** Request a fresh one-time payment token, render its QR image, and start its expiry countdown. */
   async function createQr() {
     const r = await api<{ token: string; ttl_seconds: number }>(
       `/participant/wallet/${encodeURIComponent(token)}/payment-qr`,
@@ -72,6 +77,7 @@ export default function ParticipantWallet() {
     );
     setTtl(r.ttl_seconds);
   }
+  /** Submit approval or rejection for a pending payment and refresh the wallet state. */
   async function decide(id: number, decision: "approved" | "rejected") {
     await api(
       `/participant/wallet/${encodeURIComponent(token)}/payments/${id}/decision`,
@@ -234,9 +240,11 @@ export default function ParticipantWallet() {
   );
 }
 
+/** Show one coupon and lazily generate its QR image when requested. */
 function CouponCard({ coupon }: { coupon: State["coupons"][number] }) {
   const [open, setOpen] = useState(false);
   const [src, setSrc] = useState("");
+  /** Generate the coupon QR image for display without redeeming the coupon. */
   async function show() {
     if (coupon.qr_token) {
       setSrc(

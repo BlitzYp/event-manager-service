@@ -30,6 +30,7 @@ from .services import issue_coupons, reference
 
 
 def target_wallet_ids(db: Session, action: ScheduledAction) -> list[int]:
+    """Return event wallet IDs targeted by an automation, omitting explicit exclusions."""
     excluded = select(ActionWalletOverride.wallet_id).where(
         ActionWalletOverride.action_id == action.id,
         ActionWalletOverride.included.is_(False),
@@ -42,6 +43,7 @@ def target_wallet_ids(db: Session, action: ScheduledAction) -> list[int]:
 
 
 def record_coupon_audit(db: Session, coupon: CouponInstance, action_name: str, actor: str) -> None:
+    """Stage a coupon-history snapshot with actor and reference; the caller commits."""
     template = db.get(CouponTemplate, coupon.template_id)
     wallet = db.get(Wallet, coupon.wallet_id)
     if not template or not wallet:
@@ -72,6 +74,7 @@ def execute_action(
     advance_schedule: bool = True,
     wallet_ids_override: list[int] | None = None,
 ) -> ScheduledActionRun:
+    """Execute a scoped automation once per run key and return its committed run-history record."""
     schedule_key = action.execute_at.strftime("%Y%m%d%H%M")
     run_key = f"{action.id}:{schedule_key}:{run_type}"
     existing = db.scalar(select(ScheduledActionRun).where(ScheduledActionRun.run_key == run_key))
@@ -205,6 +208,8 @@ def execute_action(
 
 
 def advance_action(db: Session, action: ScheduledAction) -> None:
+    """Stage the next daily execution or mark completion, applying the configured auto-delete flag.
+    """
     completed = True
     if action.schedule_type == ScheduleType.daily:
         next_at = action.execute_at + timedelta(days=1)
@@ -219,6 +224,7 @@ def advance_action(db: Session, action: ScheduledAction) -> None:
 
 
 def expire_pending_payments(db: Session) -> int:
+    """Lock and commit cancellation of expired pending payments; return the number cancelled."""
     rows = list(
         db.scalars(
             select(MoneyTransaction)

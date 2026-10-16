@@ -28,22 +28,27 @@ import type {
 
 type SendScope = "single" | "selected" | "all" | "group";
 
+/** Manage event email templates, images, recipient scopes, and delivery history. */
 export function EmailsPanel({ event, csrf }: { event: Event; csrf: string }) {
+  // Event-owned email content, image assets, delivery history, and recipients.
   const [templates, setTemplates] = useState<EmailTemplate[]>([]);
   const [assets, setAssets] = useState<EmailAsset[]>([]);
   const [deliveries, setDeliveries] = useState<EmailDelivery[]>([]);
   const [participants, setParticipants] = useState<Participant[]>([]);
   const [groups, setGroups] = useState<string[]>([]);
+  // Editor mode and the audience for the next immediate send.
   const [editing, setEditing] = useState<EmailTemplate | null | undefined>();
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [scope, setScope] = useState<SendScope>("single");
   const [includeArchived, setIncludeArchived] = useState(false);
+  // Server-reported delivery safeguards are displayed, not bypassed, by this UI.
   const [developmentMode, setDevelopmentMode] = useState(false);
   const [testRecipient, setTestRecipient] = useState<string | null>(null);
   const [deliveryLimit, setDeliveryLimit] = useState(3);
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
 
+  /** Refresh event templates, managed images, participants, and delivery safeguards/history. */
   const load = useCallback(async () => {
     const [templateResult, assetResult, deliveryResult, participantResult] = await Promise.all([
       api<{ templates: EmailTemplate[] }>(
@@ -76,6 +81,7 @@ export function EmailsPanel({ event, csrf }: { event: Event; csrf: string }) {
     );
   }, [load]);
 
+  /** Fetch complete template content and open the block editor for that version. */
   async function editTemplate(row: EmailTemplate) {
     setError("");
     try {
@@ -88,6 +94,7 @@ export function EmailsPanel({ event, csrf }: { event: Event; csrf: string }) {
     }
   }
 
+  /** Create or update a versioned template and refresh the email workspace. */
   async function saveTemplate(value: {
     name: string;
     subject: string;
@@ -111,6 +118,7 @@ export function EmailsPanel({ event, csrf }: { event: Event; csrf: string }) {
     await load();
   }
 
+  /** Toggle template archive status and reload the available templates. */
   async function archiveTemplate(row: EmailTemplate) {
     const archived = !row.archived_at;
     setError("");
@@ -127,6 +135,7 @@ export function EmailsPanel({ event, csrf }: { event: Event; csrf: string }) {
     }
   }
 
+  /** Upload an event email image and refresh the available managed-image assets. */
   async function uploadAsset(file: File) {
     const body = new FormData();
     body.append("file", file);
@@ -144,6 +153,7 @@ export function EmailsPanel({ event, csrf }: { event: Event; csrf: string }) {
     }
   }
 
+  /** Confirm image deletion and surface server protection for referenced assets. */
   async function deleteAsset(asset: EmailAsset) {
     if (!window.confirm(`Delete ${asset.original_name}?`)) return;
     setError("");
@@ -160,6 +170,7 @@ export function EmailsPanel({ event, csrf }: { event: Event; csrf: string }) {
     }
   }
 
+  /** Submit the chosen email content and recipient scope, then display delivery/simulation totals. */
   async function sendEmail(submitEvent: FormEvent<HTMLFormElement>) {
     submitEvent.preventDefault();
     const form = new FormData(submitEvent.currentTarget);

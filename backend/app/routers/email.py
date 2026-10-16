@@ -14,6 +14,7 @@ def public_email_asset(
     token: str = Query(min_length=20, max_length=100),
     db: Session = Depends(get_db),
 ) -> Response:
+    """Return stored image bytes only when the public asset token matches; reject invalid URLs."""
     asset = db.scalar(
         select(EmailAsset).where(
             EmailAsset.id == asset_id,

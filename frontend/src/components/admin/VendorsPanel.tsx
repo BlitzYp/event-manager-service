@@ -7,10 +7,12 @@ import { Empty, Field } from "./AdminUi";
 import { StatusBadge } from "./StatusBadge";
 import type { Event, Vendor } from "./types";
 
+/** Manage event vendors, availability, and PIN credentials. */
 export function VendorsPanel({ event, csrf }: { event: Event; csrf: string }) {
   const [items, setItems] = useState<Vendor[]>([]);
   const [error, setError] = useState("");
   const [editing, setEditing] = useState<Vendor | null>(null);
+  /** Refresh the event vendor list without exposing stored PINs. */
   const load = useCallback(async () => {
     const result = await api<{ vendors: Vendor[] }>(`/admin/events/${event.id}/vendors`);
     setItems(result.vendors);
@@ -20,6 +22,7 @@ export function VendorsPanel({ event, csrf }: { event: Event; csrf: string }) {
     void load();
   }, [load]);
 
+  /** Create a vendor from the form credentials and reload the event vendor list. */
   async function submit(submitEvent: FormEvent<HTMLFormElement>) {
     submitEvent.preventDefault();
     const formElement = submitEvent.currentTarget;
@@ -37,6 +40,7 @@ export function VendorsPanel({ event, csrf }: { event: Event; csrf: string }) {
     }
   }
 
+  /** Save vendor details or a replacement PIN, close the editor, and reload vendors. */
   async function saveVendor(submitEvent: FormEvent<HTMLFormElement>) {
     submitEvent.preventDefault();
     if (!editing) return;
@@ -59,6 +63,7 @@ export function VendorsPanel({ event, csrf }: { event: Event; csrf: string }) {
     }
   }
 
+  /** Confirm vendor deletion and surface server protection for vendors with audit history. */
   async function removeVendor(vendor: Vendor) {
     if (!window.confirm(`Delete ${vendor.name}? Existing audit entries will be preserved.`)) return;
     try {
@@ -69,6 +74,7 @@ export function VendorsPanel({ event, csrf }: { event: Event; csrf: string }) {
     }
   }
 
+  /** Toggle vendor availability and reload the list; the backend revokes disabled-vendor sessions. */
   async function toggleVendor(vendor: Vendor) {
     try {
       await api(`/admin/events/${event.id}/vendors/${vendor.id}`, {

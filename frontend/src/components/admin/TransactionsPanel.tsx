@@ -25,6 +25,7 @@ const emptyFilters: TransactionFilters = {
   vendor_id: "",
 };
 
+/** Load filtered money/coupon audit records and expose downloads without editing the ledger. */
 export function TransactionsPanel({ event }: { event: Event }) {
   const [items, setItems] = useState<(Transaction | CouponTransaction)[]>([]);
   const [vendors, setVendors] = useState<Vendor[]>([]);
@@ -32,6 +33,7 @@ export function TransactionsPanel({ event }: { event: Event }) {
   const [appliedFilters, setAppliedFilters] = useState(emptyFilters);
   const [error, setError] = useState("");
 
+  /** Return URL filters shared by ledger loading and CSV/Excel download links. */
   const queryString = useCallback((filters: TransactionFilters) => {
     const query = new URLSearchParams();
     Object.entries(filters).forEach(([key, value]) => {
@@ -40,6 +42,7 @@ export function TransactionsPanel({ event }: { event: Event }) {
     return query.toString();
   }, []);
 
+  /** Refresh money and coupon audit records using the currently applied event filters. */
   const load = useCallback(async () => {
     setError("");
     try {
@@ -214,6 +217,7 @@ export function TransactionsPanel({ event }: { event: Event }) {
   );
 }
 
+/** Map a coupon audit action to its display status without changing the underlying record. */
 function couponStatus(action: string) {
   if (action === "issued" || action === "enabled" || action === "available") return "available";
   return action;

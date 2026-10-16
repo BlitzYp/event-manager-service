@@ -11,6 +11,7 @@ class ApiError(Exception):
 
 
 async def api_error_handler(_: Request, exc: Exception) -> JSONResponse:
+    """Convert a domain API error to its stable HTTP status and JSON error envelope."""
     if not isinstance(exc, ApiError):
         raise exc
     return JSONResponse(
@@ -20,6 +21,7 @@ async def api_error_handler(_: Request, exc: Exception) -> JSONResponse:
 
 
 async def validation_error_handler(_: Request, exc: Exception) -> JSONResponse:
+    """Return a 422 JSON error envelope listing invalid request field paths and messages."""
     if not isinstance(exc, RequestValidationError):
         raise exc
     fields = [

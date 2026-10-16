@@ -47,7 +47,12 @@ event-manager-service/
 │   │   └── versions/0001_initial.py
 │   ├── app/
 │   │   ├── routers/             # HTTP endpoints grouped by audience
-│   │   │   ├── admin.py
+│   │   │   ├── admin.py         # Router assembly and compatibility exports only
+│   │   │   ├── admin_accounts.py, admin_events.py
+│   │   │   ├── admin_participants.py, admin_participant_import.py
+│   │   │   ├── admin_wallets.py, admin_vendors.py, admin_coupons.py
+│   │   │   ├── admin_actions.py, admin_reporting.py, admin_email.py
+│   │   │   ├── admin_common.py  # Shared event lookup and response helpers
 │   │   │   ├── auth.py
 │   │   │   ├── participant.py
 │   │   │   └── vendor.py
@@ -62,7 +67,7 @@ event-manager-service/
 │   │   ├── models.py            # SQLAlchemy database models and enums
 │   │   ├── schemas.py           # Pydantic request/response validation
 │   │   ├── security.py          # Argon2, hashes, HMACs, opaque tokens
-│   │   └── services.py          # Core wallet/payment/coupon business logic
+│   │   └── services/            # participants, wallets, payments, coupons, common
 │   ├── tests/                   # Pytest tests
 │   ├── Dockerfile
 │   ├── requirements.txt
@@ -77,7 +82,8 @@ event-manager-service/
 │   │   │   ├── layout.tsx
 │   │   │   └── page.tsx         # Public landing page
 │   │   ├── components/
-│   │   │   ├── admin/           # Focused admin panels, shared types, and form UI
+│   │   │   ├── admin/           # Feature panels; participants/ and email-builder/ subfeatures
+│   │   │   ├── vendor/          # Checkout hook, console, code entry, and API types
 │   │   │   └── Shell.tsx
 │   │   ├── lib/api.ts           # Shared HTTP client and money formatter
 │   │   └── test/setup.ts
@@ -99,6 +105,54 @@ event-manager-service/
 ├── Makefile
 └── README.md
 ```
+
+### Quick map for editing by hand
+
+Start with the feature you want to change rather than reading the whole application.
+Existing imports from `app.services` and `app.routers.admin` still work; edit the feature
+implementations rather than adding behavior to their compatibility exports.
+
+| Change | Backend entry point | Frontend entry point |
+| --- | --- | --- |
+| Event settings/status | [admin_events.py](backend/app/routers/admin_events.py) | [EventsPanel.tsx](frontend/src/components/admin/EventsPanel.tsx) |
+| Accounts/impersonation | [admin_accounts.py](backend/app/routers/admin_accounts.py) | [AccountsPanel.tsx](frontend/src/components/admin/AccountsPanel.tsx) |
+| Participant data, filters, links | [admin_participants.py](backend/app/routers/admin_participants.py) | [useParticipants.ts](frontend/src/components/admin/participants/useParticipants.ts) |
+| Participant forms/table | Same participant endpoints | [ParticipantsPanel.tsx](frontend/src/components/admin/ParticipantsPanel.tsx), [ParticipantTable.tsx](frontend/src/components/admin/participants/ParticipantTable.tsx) |
+| CSV validation/import | [participants.py](backend/app/services/participants.py), [admin_participant_import.py](backend/app/routers/admin_participant_import.py) | `useParticipants.ts::importCsv` |
+| Wallet links/balances | [wallets.py](backend/app/services/wallets.py), [admin_wallets.py](backend/app/routers/admin_wallets.py) | Participant and transaction panels |
+| Vendor details/PIN | [admin_vendors.py](backend/app/routers/admin_vendors.py) | [VendorsPanel.tsx](frontend/src/components/admin/VendorsPanel.tsx) |
+| Payment/redemption rules | [payments.py](backend/app/services/payments.py), [vendor.py](backend/app/routers/vendor.py) | [useVendorConsole.ts](frontend/src/components/vendor/useVendorConsole.ts) |
+| Vendor checkout layout | No backend change for layout-only edits | [VendorConsole.tsx](frontend/src/components/vendor/VendorConsole.tsx), [VendorStart.tsx](frontend/src/components/vendor/VendorStart.tsx) |
+| Participant wallet/QR display | [participant.py](backend/app/routers/participant.py) | [participant page](frontend/src/app/wallet/%5Btoken%5D/page.tsx) |
+| Coupons | [admin_coupons.py](backend/app/routers/admin_coupons.py), [coupons.py](backend/app/services/coupons.py) | [CouponsPanel.tsx](frontend/src/components/admin/CouponsPanel.tsx) |
+| Automations | [admin_actions.py](backend/app/routers/admin_actions.py), [actions.py](backend/app/actions.py) | [ActionsPanel.tsx](frontend/src/components/admin/ActionsPanel.tsx) |
+| Ledger filters/exports | [admin_reporting.py](backend/app/routers/admin_reporting.py) | [TransactionsPanel.tsx](frontend/src/components/admin/TransactionsPanel.tsx) |
+| Email delivery/HTML safety | [email_service.py](backend/app/email_service.py), [admin_email.py](backend/app/routers/admin_email.py) | [EmailsPanel.tsx](frontend/src/components/admin/EmailsPanel.tsx) |
+| Email block defaults/samples | No delivery changes | [document.ts](frontend/src/components/admin/email-builder/document.ts) |
+| Email block controls/document editing | Same email-template endpoints | [BlockInspector.tsx](frontend/src/components/admin/email-builder/BlockInspector.tsx), [EmailBuilder.tsx](frontend/src/components/admin/EmailBuilder.tsx) |
+
+**How the pieces connect:** a page selects a feature panel; the panel renders forms and
+tables; a feature hook owns related state and API calls. Backend routers validate access
+and assemble HTTP responses; service helpers contain reusable business rules. Feature
+modules import their siblings directly rather than adding generic abstraction layers.
+
+For example, participant filtering starts in `useParticipants.ts` for query parameters
+and refresh/selection behavior, `ParticipantsPanel.tsx` for inputs, and
+`admin_participants.py::list_participants` for SQL and response fields. A visual-only
+table change belongs in `ParticipantTable.tsx` and needs no backend change.
+
+**Documentation convention:** Python docstrings and TypeScript JSDoc explain the important
+operation, its result, and non-obvious effects. Section comments mark related state,
+security, configuration, and audit groups. Update documentation when a return value,
+commit owner, token lifecycle, or side effect changes. Explain intent, not every statement.
+Helpers that stage records say their caller commits; settlement helpers document their
+own commits.
+
+**Safe small edits:** retain event filters, integer minor-unit money, row locks, CSRF,
+and audit protections. Database-column changes still require Alembic migrations. Do not
+hand-edit generated declarations or dependency/build output. Regenerate
+`api.generated.ts` when the API contract changes. Run relevant validation checks before
+deploying. Local development still requires both Compose files for live reload.
 
 ## 3. Docker: build and run
 
@@ -314,7 +368,7 @@ flowchart TD
     Router --> Schema["schemas.py\nPydantic validation"]
     Router --> Dependency["dependencies.py\nauthentication + CSRF"]
     Dependency --> Session["database.get_db()\nSQLAlchemy Session"]
-    Router --> Service["services.py / actions.py\nbusiness transaction"]
+    Router --> Service["services/ / actions.py\nbusiness transaction"]
     Service --> Model["models.py\nqueries + row locks"]
     Model --> MySQL[("MySQL")]
     Service --> Commit{"Success?"}
@@ -465,7 +519,11 @@ def example(
     return {"event_id": event.id, "actor": f"admin:{admin.id}"}
 ```
 
-### Core services — `backend/app/services.py`
+### Core services — `backend/app/services/`
+
+Implement changes in `participants.py`, `wallets.py`, `payments.py`, `coupons.py`, or
+`common.py`. The package initializer preserves existing `from app.services import ...`
+imports; it contains no business logic.
 
 These are the most useful functions to reuse rather than duplicating behavior:
 
@@ -530,7 +588,7 @@ docker compose logs --tail 100 scheduler
 ### Add a new API endpoint
 
 1. Add or update a request schema in `schemas.py`.
-2. Put reusable business behavior in `services.py` or `actions.py`.
+2. Put reusable business behavior in the matching `services/` feature module or `actions.py`.
 3. Add the route to the appropriate audience router.
 4. Require the correct authentication/CSRF dependency.
 5. Filter every query by `event_id` where the model is event-scoped.
@@ -640,7 +698,7 @@ Use `money(minor, currency)` for display. Never divide or format persisted money
 | Component/page | Responsibility |
 |---|---|
 | `src/app/admin/page.tsx` | Login, event selection, participants, vendors, coupons, automation, ledgers |
-| `src/app/wallet/page.tsx` | Vendor PIN login, camera scanning, lookup, payment, coupon redemption |
+| `src/app/wallet/page.tsx` | Vendor PIN login/session restoration; checkout lives in `components/vendor/` |
 | `src/app/wallet/[token]/page.tsx` | Participant wallet, payment QR, approvals, coupons, activity |
 | `src/components/Shell.tsx` | Shared brand and public-page shell |
 | `src/app/globals.css` | Tailwind layers and reusable UI classes |

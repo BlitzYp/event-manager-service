@@ -5,6 +5,7 @@ import { CalendarPlus } from "lucide-react";
 import { api } from "@/lib/api";
 import { Field } from "./AdminUi";
 
+/** Collect event settings and notify the parent after successful event creation. */
 export function EventCreator({
   csrf,
   onCreated,
@@ -17,6 +18,7 @@ export function EventCreator({
   const [open, setOpen] = useState(embedded);
   const [error, setError] = useState("");
 
+  /** Create an event from the form settings and pass the returned event to the parent. */
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const formElement = event.currentTarget;
