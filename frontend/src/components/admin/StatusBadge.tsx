@@ -38,6 +38,7 @@ const statusMeta = {
   simulated: { className: "status-badge--simulated", Icon: FlaskConical },
 } as const;
 
+/** Render the consistent label and color used for a domain status throughout the admin UI. */
 export function StatusBadge({ status, label }: { status: string; label?: string }) {
   const normalized = status.toLowerCase() as keyof typeof statusMeta;
   const meta = statusMeta[normalized] ?? statusMeta.archived;

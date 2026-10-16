@@ -15,6 +15,7 @@ type AdminIdentity = {
   impersonating: boolean;
 };
 
+/** Restore administrator identity and CSRF, then show sign-in or the event management workspace. */
 export default function AdminPage() {
   const [authChecked, setAuthChecked] = useState(false);
   const [user, setUser] = useState<AdminIdentity | null>(null);
@@ -24,6 +25,7 @@ export default function AdminPage() {
   const [eventId, setEventId] = useState<number>();
   const [registering, setRegistering] = useState(false);
 
+  /** Restore administrator identity, CSRF, and event data for the active session. */
   const bootstrap = useCallback(async () => {
     try {
       const me = await api<{ user: AdminIdentity }>("/auth/me");
@@ -75,6 +77,7 @@ export default function AdminPage() {
     return () => window.clearInterval(interval);
   }, [bootstrap, user]);
 
+  /** Submit administrator credentials, then restore the authenticated workspace. */
   async function login(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError("");

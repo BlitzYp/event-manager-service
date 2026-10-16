@@ -8,6 +8,7 @@ import { EventCreator } from "./EventCreator";
 import { StatusBadge } from "./StatusBadge";
 import type { Event } from "./types";
 
+/** Display event settings and expose editing, status, payment-approval, and deletion controls. */
 export function EventsPanel({
   events,
   selectedEventId,
@@ -28,6 +29,7 @@ export function EventsPanel({
   }>();
   const [error, setError] = useState("");
 
+  /** Save event settings and notify the parent to refresh the event list. */
   async function updateEvent(event: Event, changes: Partial<Event>, errorMessage: string) {
     setBusyId(event.id);
     setError("");
@@ -59,10 +61,12 @@ export function EventsPanel({
     }
   }
 
+  /** Save an event status change using its current settings and refresh the parent workspace. */
   async function setStatus(event: Event, status: Event["status"]) {
     await updateEvent(event, { status }, "Could not update the event.");
   }
 
+  /** Update only the event payment-approval setting and refresh the parent workspace. */
   async function setApprovalRequired(event: Event, approvalRequired: boolean) {
     setApprovalOverride({ eventId: event.id, value: approvalRequired });
     setBusyId(event.id);
@@ -89,6 +93,7 @@ export function EventsPanel({
     }
   }
 
+  /** Confirm event deletion and surface server protection for events with audit history. */
   async function deleteEvent(event: Event) {
     if (!window.confirm(`Delete ${event.name}? This cannot be undone.`)) return;
     setBusyId(event.id);

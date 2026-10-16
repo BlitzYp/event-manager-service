@@ -7,6 +7,7 @@ from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator, mo
 from .models import ActionType, EventMode, EventStatus, ScheduleType
 
 
+# Shared response/request model behavior.
 class ApiModel(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -16,6 +17,7 @@ class Message(ApiModel):
 
 
 def normalize_admin_email(value: str) -> str:
+    """Return a validated, normalized lowercase email, allowing local test domains."""
     try:
         return validate_email(
             value.strip(),
@@ -26,6 +28,7 @@ def normalize_admin_email(value: str) -> str:
         raise ValueError(str(exc)) from exc
 
 
+# Administrator authentication and account management.
 class LoginRequest(ApiModel):
     email: str = Field(min_length=3, max_length=320)
     password: str = Field(min_length=8, max_length=200)
@@ -44,6 +47,7 @@ class AdminAccountStatusUpdate(ApiModel):
     is_active: bool
 
 
+# Event settings and participant management.
 class EventCreate(ApiModel):
     code: str = Field(pattern=r"^[A-Za-z0-9_-]{2,50}$")
     name: str = Field(min_length=1, max_length=255)
@@ -89,6 +93,7 @@ class ParticipantUpdate(ApiModel):
     email: EmailStr | None = None
 
 
+# Vendor credentials and payment requests; money stays in integer minor units.
 class VendorCreate(ApiModel):
     name: str = Field(min_length=1, max_length=255)
     pin: str = Field(pattern=r"^\d{6}$")
@@ -125,6 +130,7 @@ class DecisionRequest(ApiModel):
     decision: str = Field(pattern=r"^(approved|rejected)$")
 
 
+# Coupon definitions, availability, issuance, and redemption requests.
 class CouponTemplateCreate(ApiModel):
     name: str = Field(min_length=1, max_length=255)
     vendor_id: int | None = None
@@ -156,6 +162,7 @@ class CouponRedeem(ApiModel):
         return self
 
 
+# Email templates, archive operations, and delivery scopes.
 class EmailTemplateCreate(ApiModel):
     name: str = Field(min_length=1, max_length=255)
     subject: str = Field(min_length=1, max_length=255)
@@ -212,6 +219,7 @@ class EmailSendRequest(ApiModel):
         return self
 
 
+# Scheduled automations and explicit wallet targeting.
 class ActionCreate(ApiModel):
     name: str = Field(min_length=1, max_length=255)
     action_type: ActionType
@@ -247,6 +255,7 @@ class ActionWalletScope(ApiModel):
     wallet_ids: list[int] = Field(min_length=1, max_length=10_000)
 
 
+# Stable API error response shape.
 class ErrorBody(ApiModel):
     code: str
     message: str

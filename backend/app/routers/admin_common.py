@@ -6,6 +6,7 @@ from ..models import Event
 
 
 def event_json(row: Event) -> dict:
+    """Return the event settings exposed in administrator API responses."""
     return {
         "id": row.id,
         "code": row.code,
@@ -22,6 +23,7 @@ def event_json(row: Event) -> dict:
 
 
 def get_event(db: Session, event_id: int, lock: bool = False) -> Event:
+    """Return the requested event, optionally locked, or raise a not-found API error."""
     query = select(Event).where(Event.id == event_id)
     if lock:
         query = query.with_for_update()

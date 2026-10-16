@@ -21,10 +21,12 @@ from .admin_common import get_event
 router = APIRouter()
 
 
+# Automation configuration and immutable execution history.
 @router.get("/events/{event_id}/actions")
 def list_actions(
     event_id: int, _: AdminUser = Depends(require_admin), db: Session = Depends(get_db)
 ) -> dict:
+    """Return event automations, run counts, and the 50 most recent run-history records."""
     get_event(db, event_id)
     actions = list(
         db.scalars(
@@ -91,6 +93,7 @@ def create_action(
     admin: AdminUser = Depends(require_admin_csrf),
     db: Session = Depends(get_db),
 ) -> dict:
+    """Validate and commit an event automation; return its ID and name."""
     get_event(db, event_id)
     validate_action_email_template(db, event_id, payload)
     action = ScheduledAction(
@@ -120,6 +123,7 @@ def create_action(
 
 
 def validate_action_email_template(db: Session, event_id: int, payload: ActionCreate) -> None:
+    """Reject email automations without an available template from the same event."""
     if payload.action_type != ActionType.send_email:
         return
     template = db.scalar(
@@ -145,6 +149,7 @@ def update_action(
     _: AdminUser = Depends(require_admin_csrf),
     db: Session = Depends(get_db),
 ) -> dict:
+    """Commit editable automation settings and return its ID and name."""
     action = db.scalar(
         select(ScheduledAction)
         .where(ScheduledAction.id == action_id, ScheduledAction.event_id == event_id)
@@ -176,6 +181,7 @@ def set_action_enabled(
     _: AdminUser = Depends(require_admin_csrf),
     db: Session = Depends(get_db),
 ) -> dict:
+    """Commit automation availability and return its updated enabled flag."""
     action = db.scalar(
         select(ScheduledAction)
         .where(ScheduledAction.id == action_id, ScheduledAction.event_id == event_id)
@@ -195,6 +201,7 @@ def delete_action(
     _: AdminUser = Depends(require_admin_csrf),
     db: Session = Depends(get_db),
 ) -> Response:
+    """Delete and commit an automation only if it has no immutable run history."""
     action = db.scalar(
         select(ScheduledAction)
         .where(ScheduledAction.id == action_id, ScheduledAction.event_id == event_id)
@@ -215,6 +222,7 @@ def delete_action(
     return Response(status_code=204)
 
 
+# Manual execution and selected-wallet schedule overrides.
 @router.post("/events/{event_id}/actions/{action_id}/run")
 def run_action_now(
     event_id: int,
@@ -222,6 +230,7 @@ def run_action_now(
     admin: AdminUser = Depends(require_admin_csrf),
     db: Session = Depends(get_db),
 ) -> dict:
+    """Execute one automation immediately and return the committed run summary."""
     action = db.scalar(
         select(ScheduledAction)
         .where(ScheduledAction.id == action_id, ScheduledAction.event_id == event_id)
@@ -255,6 +264,7 @@ def apply_action_wallet_scope(
     admin: AdminUser = Depends(require_admin_csrf),
     db: Session = Depends(get_db),
 ) -> dict:
+    """Run an action on selected event wallets or commit schedule inclusions/exclusions."""
     action = db.scalar(
         select(ScheduledAction)
         .where(ScheduledAction.id == action_id, ScheduledAction.event_id == event_id)

@@ -38,10 +38,12 @@ from ..services import create_vendor_payment, reference, reserved_minor, resolve
 router = APIRouter(prefix="/vendor", tags=["vendor-wallet"])
 
 
+# PIN sign-in, session status, CSRF rotation, and sign-out.
 @router.post("/login")
 def login(
     payload: VendorLogin, request: Request, response: Response, db: Session = Depends(get_db)
 ) -> dict:
+    """Validate the event and PIN, commit a vendor session/cookie, and return identity plus CSRF."""
     ip_hash = keyed_lookup(request.client.host if request.client else "unknown", "vendor-ip")
     attempts = db.scalar(
         select(func.count(VendorLoginAttempt.id)).where(
@@ -102,6 +104,7 @@ def login(
 
 @router.get("/me")
 def me(vendor: Vendor = Depends(require_vendor)) -> dict:
+    """Return the authenticated vendor identity and its event details."""
     return {
         "vendor": {
             "id": vendor.id,
@@ -119,6 +122,7 @@ def csrf(
     db: Session = Depends(get_db),
     vendor_session: str | None = Cookie(default=None),
 ) -> dict:
+    """Commit a rotated vendor CSRF hash and return the raw CSRF token."""
     row = db.scalar(
         select(VendorSession).where(VendorSession.token_hash == token_hash(vendor_session or ""))
     )
@@ -137,6 +141,7 @@ def logout(
     db: Session = Depends(get_db),
     vendor_session: str | None = Cookie(default=None),
 ) -> dict:
+    """Commit vendor session revocation, clear its cookie, and return confirmation."""
     row = db.scalar(
         select(VendorSession).where(VendorSession.token_hash == token_hash(vendor_session or ""))
     )
@@ -147,6 +152,7 @@ def logout(
     return {"message": "Signed out."}
 
 
+# Event-scoped QR/code lookup and payment creation/status.
 @router.get("/lookup")
 def lookup(
     qr_token: str | None = None,
@@ -155,6 +161,9 @@ def lookup(
     vendor: Vendor = Depends(require_vendor),
     db: Session = Depends(get_db),
 ) -> dict:
+    """Return an event-scoped wallet or coupon from a QR/code; reject unavailable or foreign
+    targets.
+    """
     coupon_id = coupon_id_from_token(qr_token or "") or coupon_id_from_code(
         coupon_code or ""
     )
@@ -231,6 +240,7 @@ def create_payment(
     vendor: Vendor = Depends(require_vendor_csrf),
     db: Session = Depends(get_db),
 ) -> dict:
+    """Create or reuse an idempotent vendor payment and return its reference, amount, and status."""
     row = create_vendor_payment(
         db,
         vendor,
@@ -254,6 +264,7 @@ def create_payment(
 def payment_status(
     transaction_id: int, vendor: Vendor = Depends(require_vendor), db: Session = Depends(get_db)
 ) -> dict:
+    """Return a payment status only when the payment belongs to the authenticated vendor."""
     row = db.scalar(
         select(MoneyTransaction).where(
             MoneyTransaction.id == transaction_id, MoneyTransaction.vendor_id == vendor.id
@@ -271,12 +282,14 @@ def payment_status(
     }
 
 
+# One-time coupon redemption under row locks.
 @router.post("/coupons/redeem")
 def redeem_coupon(
     payload: CouponRedeem,
     vendor: Vendor = Depends(require_vendor_csrf),
     db: Session = Depends(get_db),
 ) -> dict:
+    """Lock an available coupon, commit one redemption plus its audit, and return the receipt."""
     coupon_id = coupon_id_from_token(payload.token or "") or coupon_id_from_code(
         payload.code or ""
     )

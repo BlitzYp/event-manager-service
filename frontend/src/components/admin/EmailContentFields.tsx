@@ -21,6 +21,7 @@ const sampleValues: Record<string, string> = {
   "{{public_wallet}}": "https://example.com/wallet",
 };
 
+/** Replace supported email tokens with demonstration values for the browser preview. */
 function sampleContent(value: string): string {
   let result = value;
   for (const [placeholder, sample] of Object.entries(sampleValues)) {
@@ -31,11 +32,17 @@ function sampleContent(value: string): string {
   return result;
 }
 
+/**
+ * Return a browser-only rich-text preview using an allowlist; server sanitization remains authoritative.
+ */
 function sanitizedBasicPreview(value: string): string {
   const source = new DOMParser().parseFromString(value, "text/html");
   const allowed = new Set(["A", "B", "STRONG", "I", "EM", "U", "SPAN", "P", "DIV", "BR"]);
   const colorPattern = /^(?:#[0-9a-f]{3}(?:[0-9a-f]{3})?|rgba?\([0-9.,\s]+\))$/i;
 
+  /**
+   * Recursively retain allowed preview tags and escape text, dropping scripts and unsafe attributes.
+   */
   function clean(node: Node): string {
     if (node.nodeType === Node.TEXT_NODE) {
       const span = document.createElement("span");
@@ -68,6 +75,7 @@ function sanitizedBasicPreview(value: string): string {
   return Array.from(source.body.childNodes).map(clean).join("");
 }
 
+/** Return preview HTML for rich or plain content with demonstration personalization values. */
 function basicPreview(value: string): string {
   let content = sanitizedBasicPreview(value.trim());
   content = content.replace(
@@ -79,6 +87,7 @@ function basicPreview(value: string): string {
   );
 }
 
+/** Offer saved-template or basic rich-text email fields and a safe browser preview. */
 export function EmailContentFields({
   eventId,
   templates,
@@ -107,6 +116,7 @@ export function EmailContentFields({
     setPreviewError("");
   }, [source, templateId, body]);
 
+  /** Remember the rich-text selection so toolbar actions can restore the insertion point. */
   function rememberSelection() {
     const selection = window.getSelection();
     if (
@@ -117,6 +127,7 @@ export function EmailContentFields({
     }
   }
 
+  /** Restore the last rich-text selection before applying a formatting or insertion command. */
   function restoreSelection() {
     const selection = window.getSelection();
     if (selectionRef.current && selection) {
@@ -125,6 +136,7 @@ export function EmailContentFields({
     }
   }
 
+  /** Apply a browser rich-text command at the saved selection and update the form content. */
   function runEditorCommand(command: string, value?: string) {
     const editor = editorRef.current;
     if (!editor) return;
@@ -135,6 +147,7 @@ export function EmailContentFields({
     rememberSelection();
   }
 
+  /** Focus the rich-text editor and restore its last saved selection. */
   function focusEditor() {
     const editor = editorRef.current;
     if (!editor) return;
@@ -149,10 +162,12 @@ export function EmailContentFields({
     rememberSelection();
   }
 
+  /** Insert a personalization token at the saved editor selection. */
   function insertPlaceholder(placeholder: string) {
     runEditorCommand("insertText", placeholder);
   }
 
+  /** Insert the wallet-link placeholder into the current rich-text selection. */
   function insertWalletLink() {
     const editor = editorRef.current;
     if (!editor) return;
@@ -178,6 +193,7 @@ export function EmailContentFields({
     setBody(editor.innerHTML);
   }
 
+  /** Switch between editing and preview while preserving the current email content. */
   async function togglePreview() {
     if (previewOpen) {
       setPreviewOpen(false);

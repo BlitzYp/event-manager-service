@@ -18,6 +18,8 @@ router = APIRouter(prefix="/participant", tags=["participant-wallet"])
 
 
 def wallet_payload(db: Session, access_token: str) -> dict:
+    """Return wallet balances, recent/pending payments, and coupons for a valid secret access link.
+    """
     wallet = wallet_for_access_token(db, access_token)
     participant, event = wallet.participant, wallet.event
     pending = list(
@@ -80,6 +82,7 @@ def wallet_payload(db: Session, access_token: str) -> dict:
 
 
 def transaction_payload(row: MoneyTransaction) -> dict:
+    """Return the participant-facing payment fields, excluding internal actor and wallet data."""
     return {
         "id": row.id,
         "reference": row.reference,
@@ -94,11 +97,13 @@ def transaction_payload(row: MoneyTransaction) -> dict:
 
 @router.get("/wallet/{access_token}")
 def state(access_token: str, db: Session = Depends(get_db)) -> dict:
+    """Return the current participant wallet payload for a valid access token."""
     return wallet_payload(db, access_token)
 
 
 @router.post("/wallet/{access_token}/payment-qr")
 def payment_qr(access_token: str, db: Session = Depends(get_db)) -> dict:
+    """Lock the wallet, commit a new payment QR grant, and return its secret token and TTL."""
     wallet = wallet_for_access_token(db, access_token, lock=True)
     token, ttl = create_payment_qr(db, wallet)
     db.commit()
@@ -109,6 +114,7 @@ def payment_qr(access_token: str, db: Session = Depends(get_db)) -> dict:
 def payment_decision(
     access_token: str, transaction_id: int, payload: DecisionRequest, db: Session = Depends(get_db)
 ) -> dict:
+    """Commit a participant payment decision and return the updated transaction payload."""
     wallet = wallet_for_access_token(db, access_token)
     return {
         "transaction": transaction_payload(

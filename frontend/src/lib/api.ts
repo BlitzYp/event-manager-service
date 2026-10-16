@@ -10,6 +10,9 @@ export class ApiFailure extends Error {
   }
 }
 
+/**
+ * Send an authenticated API request with optional CSRF; return JSON/raw response or throw ApiFailure.
+ */
 export async function api<T>(
   path: string,
   init: RequestInit = {},
@@ -39,6 +42,7 @@ export async function api<T>(
   ) as Promise<T>;
 }
 
+/** Format integer minor units as a localized currency string for display only. */
 export function money(minor: number, currency: string) {
   return new Intl.NumberFormat("en", { style: "currency", currency }).format(
     minor / 100,

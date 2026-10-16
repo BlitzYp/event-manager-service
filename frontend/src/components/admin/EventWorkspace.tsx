@@ -26,6 +26,7 @@ const tabs = [
   ["transactions", "Transactions", Download],
 ] as const;
 
+/** Select the event feature panel and pass its event and CSRF context to that panel. */
 export function EventWorkspace({
   event,
   events,

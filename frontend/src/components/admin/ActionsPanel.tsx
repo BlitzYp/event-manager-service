@@ -7,6 +7,7 @@ import { Empty, Field } from "./AdminUi";
 import { StatusBadge } from "./StatusBadge";
 import type { EmailTemplate, Event, ScheduledAction } from "./types";
 
+/** Edit event automations and show manual execution controls alongside immutable run history. */
 export function ActionsPanel({ event, csrf }: { event: Event; csrf: string }) {
   const [items, setItems] = useState<ScheduledAction[]>([]);
   const [templates, setTemplates] = useState<EmailTemplate[]>([]);
@@ -19,6 +20,7 @@ export function ActionsPanel({ event, csrf }: { event: Event; csrf: string }) {
   const [editing, setEditing] = useState<ScheduledAction>();
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
+  /** Refresh event automations and their recent run history. */
   const load = useCallback(async () => {
     const [actionResult, templateResult] = await Promise.all([
       api<{ actions: ScheduledAction[] }>(`/admin/events/${event.id}/actions`),
@@ -40,6 +42,7 @@ export function ActionsPanel({ event, csrf }: { event: Event; csrf: string }) {
     setExecutionTime(toLocalTimeValue(firstRun));
   }, []);
 
+  /** Clear the automation form and return it to create mode. */
   function resetEditor() {
     const nextRun = new Date(Date.now() + 60 * 60 * 1000);
     setEditing(undefined);
@@ -51,6 +54,7 @@ export function ActionsPanel({ event, csrf }: { event: Event; csrf: string }) {
     setExecutionTime(toLocalTimeValue(nextRun));
   }
 
+  /** Create or update an automation from form fields and reload its configuration. */
   async function submit(submitEvent: FormEvent<HTMLFormElement>) {
     submitEvent.preventDefault();
     const formElement = submitEvent.currentTarget;
@@ -100,6 +104,7 @@ export function ActionsPanel({ event, csrf }: { event: Event; csrf: string }) {
     }
   }
 
+  /** Populate the editor from an existing automation, converting schedule values to local inputs. */
   function editAction(action: ScheduledAction) {
     const execution = new Date(action.execute_at);
     setEditing(action);
@@ -114,6 +119,7 @@ export function ActionsPanel({ event, csrf }: { event: Event; csrf: string }) {
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
+  /** Enable or disable an automation and reload its current state. */
   async function toggleAction(action: ScheduledAction) {
     setError("");
     try {
@@ -129,6 +135,7 @@ export function ActionsPanel({ event, csrf }: { event: Event; csrf: string }) {
     }
   }
 
+  /** Confirm and request deletion of an automation that has no execution history. */
   async function deleteAction(action: ScheduledAction) {
     if (!window.confirm(`Delete automation “${action.name}”?`)) return;
     setError("");
@@ -146,6 +153,7 @@ export function ActionsPanel({ event, csrf }: { event: Event; csrf: string }) {
     }
   }
 
+  /** Confirm immediate automation execution and reload the action/run summaries. */
   async function runAction(action: ScheduledAction) {
     setError("");
     try {
@@ -299,14 +307,17 @@ function pad(value: number) {
   return String(value).padStart(2, "0");
 }
 
+/** Return a date-input value using the browser local calendar, not a UTC date conversion. */
 function toLocalDateValue(value: Date) {
   return `${value.getFullYear()}-${pad(value.getMonth() + 1)}-${pad(value.getDate())}`;
 }
 
+/** Return an HH:mm time-input value in the browser local timezone. */
 function toLocalTimeValue(value: Date) {
   return `${pad(value.getHours())}:${pad(value.getMinutes())}`;
 }
 
+/** Return a datetime-local input value assembled from local date and time fields. */
 function toLocalDateTimeValue(value: Date) {
   return `${toLocalDateValue(value)}T${toLocalTimeValue(value)}`;
 }

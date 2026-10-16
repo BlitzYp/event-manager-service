@@ -24,6 +24,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from .database import Base, utcnow
 
 
+# Domain enums shared by database records and API validation.
 class EventStatus(str, enum.Enum):
     draft = "draft"
     active = "active"
@@ -82,6 +83,7 @@ class EmailDeliveryStatus(str, enum.Enum):
     simulated = "simulated"
 
 
+# Common primary-key and timestamp columns.
 class IdMixin:
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
 
@@ -93,6 +95,7 @@ class TimestampMixin:
     )
 
 
+# Administrator accounts and authenticated browser sessions.
 class AdminUser(IdMixin, TimestampMixin, Base):
     __tablename__ = "admin_users"
     email: Mapped[str] = mapped_column(String(320), unique=True, index=True)
@@ -117,6 +120,7 @@ class AdminSession(IdMixin, Base):
     admin: Mapped[AdminUser] = relationship(foreign_keys=[admin_id])
 
 
+# Event configuration, participants, wallets, and secret access links.
 class Event(IdMixin, TimestampMixin, Base):
     __tablename__ = "events"
     admin_id: Mapped[int | None] = mapped_column(
@@ -168,6 +172,7 @@ class WalletAccessToken(IdMixin, Base):
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime)
 
 
+# Event vendors, sessions, PIN credentials, and login throttling.
 class Vendor(IdMixin, TimestampMixin, Base):
     __tablename__ = "vendors"
     __table_args__ = (UniqueConstraint("event_id", "pin_lookup"),)
@@ -199,6 +204,7 @@ class VendorLoginAttempt(IdMixin, Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, index=True)
 
 
+# Single-use payment grants and immutable financial ledger snapshots.
 class PaymentQrGrant(IdMixin, Base):
     __tablename__ = "payment_qr_grants"
     wallet_id: Mapped[int] = mapped_column(ForeignKey("wallets.id", ondelete="CASCADE"), index=True)
@@ -242,6 +248,7 @@ class MoneyTransaction(IdMixin, TimestampMixin, Base):
     note: Mapped[str | None] = mapped_column(String(500))
 
 
+# Coupon definitions, issued copies, and redemption/status audit history.
 class CouponTemplate(IdMixin, TimestampMixin, Base):
     __tablename__ = "coupon_templates"
     event_id: Mapped[int] = mapped_column(ForeignKey("events.id", ondelete="CASCADE"), index=True)
@@ -293,6 +300,7 @@ class CouponAudit(IdMixin, Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, index=True)
 
 
+# Versioned email content, managed images, and delivery audit history.
 class EmailTemplate(IdMixin, TimestampMixin, Base):
     __tablename__ = "email_templates"
     __table_args__ = (
@@ -356,6 +364,7 @@ class EmailDelivery(IdMixin, Base):
     sent_at: Mapped[datetime | None] = mapped_column(DateTime)
 
 
+# Automations, per-wallet scope overrides, and recorded execution history.
 class ScheduledAction(IdMixin, TimestampMixin, Base):
     __tablename__ = "scheduled_actions"
     event_id: Mapped[int] = mapped_column(ForeignKey("events.id", ondelete="CASCADE"), index=True)

@@ -4,13 +4,11 @@ import { useMemo, useRef, useState } from "react";
 import {
   ArrowDown,
   ArrowUp,
-  Bold,
   Code2,
   Eye,
   FileJson,
   Heading,
   ImageIcon,
-  Italic,
   Link,
   Minus,
   MousePointerClick,
@@ -19,7 +17,6 @@ import {
   Space,
   Trash2,
   Type,
-  Underline,
 } from "lucide-react";
 import {
   Reader,
@@ -33,119 +30,12 @@ import type {
   EmailTemplate,
 } from "./types";
 
-type BlockType = "Heading" | "Text" | "Button" | "Image" | "Divider" | "Spacer" | "Html";
+import { BlockInspector } from "./email-builder/BlockInspector";
+import { defaultBlock, placeholders, sampleHtml, starterDocument, type BlockType } from "./email-builder/document";
+
 type View = "editor" | "preview" | "html" | "json";
 
-const starterDocument: EmailDocument = {
-  root: {
-    type: "EmailLayout",
-    data: {
-      backdropColor: "#eef2ee",
-      canvasColor: "#ffffff",
-      textColor: "#24342d",
-      fontFamily: "MODERN_SANS",
-      childrenIds: ["welcome-heading", "welcome-text", "wallet-button"],
-    },
-  },
-  "welcome-heading": {
-    type: "Heading",
-    data: {
-      props: { level: "h2", text: "Hello, {{participant_first_name}}!" },
-      style: {
-        padding: { top: 32, right: 32, bottom: 12, left: 32 },
-        fontWeight: "bold",
-      },
-    },
-  },
-  "welcome-text": {
-    type: "Text",
-    data: {
-      props: { text: "Your event wallet is ready.", markdown: true },
-      style: {
-        padding: { top: 0, right: 32, bottom: 20, left: 32 },
-        fontSize: 16,
-      },
-    },
-  },
-  "wallet-button": {
-    type: "Button",
-    data: {
-      props: {
-        text: "Open wallet",
-        url: "{{wallet_link}}",
-        buttonBackgroundColor: "#4fa800",
-        buttonTextColor: "#ffffff",
-        buttonStyle: "rounded",
-        size: "large",
-      },
-      style: {
-        padding: { top: 8, right: 32, bottom: 32, left: 32 },
-        textAlign: "left",
-      },
-    },
-  },
-};
-
-const placeholders = [
-  ["First name", "{{participant_first_name}}"],
-  ["Last name", "{{participant_last_name}}"],
-  ["Full name", "{{participant_name}}"],
-  ["Participant code", "{{participant_code}}"],
-  ["Email", "{{participant_email}}"],
-  ["Group", "{{participant_group}}"],
-  ["Event name", "{{event_name}}"],
-] as const;
-
-function defaultBlock(type: BlockType): EmailBlock {
-  const padding = { top: 16, right: 24, bottom: 16, left: 24 };
-  if (type === "Heading")
-    return { type, data: { props: { text: "New heading", level: "h2" }, style: { padding } } };
-  if (type === "Text")
-    return { type, data: { props: { text: "New text block", markdown: true }, style: { padding, fontSize: 16 } } };
-  if (type === "Button")
-    return {
-      type,
-      data: {
-        props: {
-          text: "Open",
-          url: "https://example.com",
-          buttonBackgroundColor: "#4fa800",
-          buttonTextColor: "#ffffff",
-          buttonStyle: "rounded",
-          size: "medium",
-        },
-        style: { padding },
-      },
-    };
-  if (type === "Image")
-    return {
-      type,
-      data: {
-        props: { url: "https://placehold.co/600x300/png", alt: "Image", contentAlignment: "middle" },
-        style: { padding },
-      },
-    };
-  if (type === "Divider")
-    return { type, data: { props: { lineColor: "#d7ded9", lineHeight: 1 }, style: { padding } } };
-  if (type === "Spacer") return { type, data: { props: { height: 32 } } };
-  return {
-    type,
-    data: { props: { contents: "<p>Custom HTML content</p>" }, style: { padding } },
-  };
-}
-
-function sampleHtml(source: string) {
-  return source
-    .replaceAll("{{participant_first_name}}", "Anna")
-    .replaceAll("{{participant_last_name}}", "Bērziņa")
-    .replaceAll("{{participant_name}}", "Anna Bērziņa")
-    .replaceAll("{{participant_code}}", "P-1042")
-    .replaceAll("{{participant_email}}", "anna@example.com")
-    .replaceAll("{{participant_group}}", "Guests")
-    .replaceAll("{{event_name}}", "Summer event")
-    .replaceAll("{{wallet_link}}", "https://example.com/wallet");
-}
-
+/** Compose a block document, preview its HTML, and save the current template version. */
 export function EmailBuilder({
   template,
   assets,
@@ -163,6 +53,7 @@ export function EmailBuilder({
   }) => Promise<void>;
   onClose: () => void;
 }) {
+  // Saved template fields, editable block tree, selection, and preview state.
   const [document, setDocument] = useState<EmailDocument>(
     template?.document ?? starterDocument,
   );
@@ -178,11 +69,13 @@ export function EmailBuilder({
   const textEditorRef = useRef<HTMLTextAreaElement>(null);
   const childIds = (document.root.data.childrenIds as string[] | undefined) ?? [];
   const selected = selectedId ? document[selectedId] : undefined;
+  /** Render the current block document to the HTML payload saved with the template. */
   const renderedHtml = useMemo(
     () => renderToStaticMarkup(document as TReaderDocument, { rootBlockId: "root" }),
     [document],
   );
 
+  /** Replace the ordered top-level block IDs while retaining the current email layout settings. */
   function changeRoot(childrenIds: string[]) {
     setDocument({
       ...document,
@@ -193,6 +86,7 @@ export function EmailBuilder({
     });
   }
 
+  /** Append a fresh block to the document and select it for editing. */
   function addBlock(type: BlockType) {
     nextBlockId.current += 1;
     const id = `new-block-${nextBlockId.current}`;
@@ -207,6 +101,7 @@ export function EmailBuilder({
     setSelectedId(id);
   }
 
+  /** Move one block up or down without moving it outside the document bounds. */
   function moveBlock(id: string, direction: -1 | 1) {
     const index = childIds.indexOf(id);
     const target = index + direction;
@@ -216,6 +111,7 @@ export function EmailBuilder({
     changeRoot(next);
   }
 
+  /** Remove a block and its layout reference, then clear the inspector selection. */
   function removeBlock(id: string) {
     const next = { ...document };
     delete next[id];
@@ -230,11 +126,13 @@ export function EmailBuilder({
     setSelectedId(null);
   }
 
+  /** Replace only the selected block data while preserving all other document blocks. */
   function updateSelected(data: EmailBlock["data"]) {
     if (!selectedId || !selected) return;
     setDocument({ ...document, [selectedId]: { ...selected, data } });
   }
 
+  /** Merge a content property into the selected block without discarding its other properties. */
   function setProp(key: string, value: unknown) {
     if (!selected) return;
     updateSelected({
@@ -243,6 +141,7 @@ export function EmailBuilder({
     });
   }
 
+  /** Merge a style property into the selected block without discarding its other styles. */
   function setStyle(key: string, value: unknown) {
     if (!selected) return;
     updateSelected({
@@ -251,6 +150,7 @@ export function EmailBuilder({
     });
   }
 
+  /** Wrap the textarea selection in formatting markers and restore focus to the edited text. */
   function wrapSelectedText(before: string, after: string = before) {
     const editor = textEditorRef.current;
     if (!editor || !selected) return;
@@ -271,12 +171,14 @@ export function EmailBuilder({
     });
   }
 
+  /** Append a supported personalization token to the selected block text. */
   function insertPlaceholder(value: string) {
     if (!selected) return;
     const props = selected.data.props ?? {};
     setProp("text", `${String(props.text ?? "")}${value}`);
   }
 
+  /** Pass the current name, subject, document, rendered HTML, and version to the save callback. */
   async function save() {
     setSaving(true);
     setError("");
@@ -295,6 +197,7 @@ export function EmailBuilder({
     }
   }
 
+  // Blocks offered in the editor sidebar, paired with labels and icons.
   const palette = [
     ["Heading", "Heading", Heading],
     ["Text", "Text", Type],
@@ -406,81 +309,14 @@ export function EmailBuilder({
           </div>
         </main>
 
-        <aside className="border-l border-black/10 p-4">
-          <h4 className="font-semibold">{selected ? selected.type : "Email layout"}</h4>
-          {!selected && <p className="mt-2 text-sm text-black/50">Select a block to edit its content and styling.</p>}
-          {selected && (
-            <div className="mt-4 grid gap-3">
-              {["Heading", "Text", "Button"].includes(selected.type) && (
-                <label>
-                  <span className="label">Text</span>
-                  {selected.type === "Text" && (
-                    <div className="mb-2 flex flex-wrap gap-1">
-                      <button className="button-secondary min-h-8 px-2" type="button" title="Bold selected text" aria-label="Bold selected text" onClick={() => wrapSelectedText("**")}><Bold size={14} /></button>
-                      <button className="button-secondary min-h-8 px-2" type="button" title="Italic selected text" aria-label="Italic selected text" onClick={() => wrapSelectedText("*")}><Italic size={14} /></button>
-                      <button className="button-secondary min-h-8 px-2" type="button" title="Underline selected text" aria-label="Underline selected text" onClick={() => wrapSelectedText("<u>", "</u>")}><Underline size={14} /></button>
-                      <label className="button-secondary min-h-8 cursor-pointer px-2 text-xs" title="Selected text color">
-                        Color
-                        <input
-                          className="h-5 w-6 cursor-pointer border-0 bg-transparent p-0"
-                          type="color"
-                          defaultValue="#24342d"
-                          aria-label="Selected text color"
-                          onChange={(event) => wrapSelectedText(`<span style="color:${event.target.value}">`, "</span>")}
-                        />
-                      </label>
-                    </div>
-                  )}
-                  <textarea ref={selected.type === "Text" ? textEditorRef : undefined} className="input min-h-28" value={String(selected.data.props?.text ?? "")} onChange={(event) => setProp("text", event.target.value)} />
-                </label>
-              )}
-              {["Heading", "Text"].includes(selected.type) && (
-                <div className="grid grid-cols-2 gap-2">
-                  <button
-                    className={selected.data.style?.fontWeight === "bold" ? "button min-h-9 px-3" : "button-secondary min-h-9 px-3"}
-                    type="button"
-                    onClick={() => setStyle("fontWeight", selected.data.style?.fontWeight === "bold" ? "normal" : "bold")}
-                  >
-                    <Bold size={14} /> Block bold
-                  </button>
-                  <label className="button-secondary min-h-9 cursor-pointer px-3 text-xs">
-                    Block color
-                    <input
-                      className="h-5 w-6 cursor-pointer border-0 bg-transparent p-0"
-                      type="color"
-                      value={String(selected.data.style?.color ?? "#24342d")}
-                      onChange={(event) => setStyle("color", event.target.value)}
-                    />
-                  </label>
-                </div>
-              )}
-              {selected.type === "Button" && (
-                <>
-                  <label><span className="label">URL</span><input className="input" value={String(selected.data.props?.url ?? "")} onChange={(event) => setProp("url", event.target.value)} /></label>
-                  <label><span className="label">Button color</span><input className="input" type="color" value={String(selected.data.props?.buttonBackgroundColor ?? "#4fa800")} onChange={(event) => setProp("buttonBackgroundColor", event.target.value)} /></label>
-                </>
-              )}
-              {selected.type === "Image" && (
-                <>
-                  <label>
-                    <span className="label">Event image</span>
-                    <select className="input" value={assets.some((asset) => asset.url === selected.data.props?.url) ? String(selected.data.props?.url) : ""} onChange={(event) => setProp("url", event.target.value)}>
-                      <option value="">Choose an uploaded image</option>
-                      {assets.map((asset) => <option key={asset.id} value={asset.url}>{asset.original_name} ({asset.width} × {asset.height})</option>)}
-                    </select>
-                  </label>
-                  <label><span className="label">Image URL</span><input className="input" value={String(selected.data.props?.url ?? "")} onChange={(event) => setProp("url", event.target.value)} /></label>
-                  <label><span className="label">Alternative text</span><input className="input" value={String(selected.data.props?.alt ?? "")} onChange={(event) => setProp("alt", event.target.value)} /></label>
-                  <label><span className="label">Click URL</span><input className="input" value={String(selected.data.props?.linkHref ?? "")} onChange={(event) => setProp("linkHref", event.target.value)} /></label>
-                </>
-              )}
-              {selected.type === "Html" && <label><span className="label">HTML</span><textarea className="input min-h-48 font-mono text-xs" value={String(selected.data.props?.contents ?? "")} onChange={(event) => setProp("contents", event.target.value)} /></label>}
-              {selected.type === "Spacer" && <label><span className="label">Height</span><input className="input" type="number" min="1" max="500" value={Number(selected.data.props?.height ?? 32)} onChange={(event) => setProp("height", Number(event.target.value))} /></label>}
-              {selected.type === "Divider" && <label><span className="label">Line color</span><input className="input" type="color" value={String(selected.data.props?.lineColor ?? "#d7ded9")} onChange={(event) => setProp("lineColor", event.target.value)} /></label>}
-            </div>
-          )}
-          <p className="mt-8 text-xs text-black/40">Built with EmailBuilder.js (MIT).</p>
-        </aside>
+        <BlockInspector
+          selected={selected}
+          assets={assets}
+          textEditorRef={textEditorRef}
+          setProp={setProp}
+          setStyle={setStyle}
+          wrapSelectedText={wrapSelectedText}
+        />
       </div>
     </div>
   );
